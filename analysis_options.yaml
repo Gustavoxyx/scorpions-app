@@ -1,0 +1,28 @@
+# Regras de análise estática do projeto.
+#
+# Partimos do conjunto recomendado do Flutter e endurecemos alguns pontos que
+# importam para um código pensado para crescer: tipos explícitos em APIs
+# públicas, chaves em widgets e const onde possível (menos reconstruções em
+# aparelhos modestos).
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    # Erros de formatação de docs não devem quebrar a análise.
+    dangling_library_doc_comments: ignore
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_print
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_locals
+    - unnecessary_late
+    - use_super_parameters
+    - sort_child_properties_last
+    - avoid_unnecessary_containers
+    - prefer_single_quotes

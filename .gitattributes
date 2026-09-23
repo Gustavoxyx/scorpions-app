@@ -1,0 +1,22 @@
+# Normaliza as quebras de linha no repositório.
+#
+# Sem isto, o Git no Windows grava CRLF no disco e LF no histórico, e cada
+# máquina que clona o projeto produz um diff inteiro de "arquivo modificado"
+# sem nenhuma mudança real de conteúdo.
+* text=auto eol=lf
+
+# Scripts que só rodam no Windows precisam de CRLF de verdade.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binários: nunca converter.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary
+*.ttf  binary
+*.otf  binary
+*.jar  binary
+*.keystore binary

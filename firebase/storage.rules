@@ -1,0 +1,87 @@
+rules_version = '2';
+
+// =============================================================================
+// SCORPIONS — Regras de segurança do Cloud Storage
+// =============================================================================
+//
+// As fotografias enviadas pelos usuários são tratadas como dado potencialmente
+// sensível (brief §15, §36): elas mostram onde a pessoa esteve e o que
+// encontrou. Nenhuma imagem é pública.
+//
+// O caminho carrega o dono: users/{uid}/identifications/{id}/{arquivo}. Isso
+// permite autorizar por comparação direta de segmento, sem uma leitura extra
+// no Firestore a cada acesso.
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Limite de 8 MB. Uma foto de celular reduzida a 1600px fica bem abaixo
+    // disso; o teto existe para que ninguém use o bucket como armazenamento
+    // gratuito nem estoure a cota com um upload gigante.
+    function isWithinSizeLimit() {
+      return request.resource.size > 0
+        && request.resource.size < 8 * 1024 * 1024;
+    }
+
+    // Só formatos que o pipeline de visão sabe processar.
+    //
+    // ATENÇÃO (§16): `contentType` é informado pelo cliente e pode mentir.
+    // Esta regra barra o descuidado, não o mal-intencionado. A validação
+    // confiável do conteúdo real do arquivo pertence ao servidor — entra na
+    // Fase 4, quando uma Function processar a imagem antes da análise.
+    function isAllowedImage() {
+      return request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+    }
+
+    // Nomes previstos. Impede que o caminho vire depósito arbitrário.
+    // `processed` e `thumbnail` já são aceitos porque a Fase 4 vai gerá-los.
+    function isAllowedFileName(name) {
+      return name.matches('(original|processed|thumbnail)\\.(jpg|jpeg|png|webp)');
+    }
+
+    // -------------------------------------------------------------------------
+    // Imagens de identificação  (brief §14)
+    // -------------------------------------------------------------------------
+    match /users/{userId}/identifications/{identificationId}/{fileName} {
+
+      allow read: if isOwner(userId);
+
+      allow create, update: if isOwner(userId)
+        && isWithinSizeLimit()
+        && isAllowedImage()
+        && isAllowedFileName(fileName);
+
+      allow delete: if isOwner(userId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Ativos do catálogo (fotografias científicas, modelos 3D)
+    // -------------------------------------------------------------------------
+    // Leitura pública porque acompanham o catálogo, que também é público.
+    // Escrita não é concedida a ninguém a partir do cliente: publicar conteúdo
+    // científico é operação de console ou de backend administrativo.
+    match /catalog/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Negação final
+    // -------------------------------------------------------------------------
+    // Qualquer caminho fora dos previstos é inacessível — em particular, a
+    // raiz do bucket. Sem isto, um cliente poderia enviar arquivos para
+    // caminhos arbitrários (§19).
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

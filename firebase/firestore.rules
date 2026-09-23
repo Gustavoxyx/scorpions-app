@@ -1,0 +1,208 @@
+rules_version = '2';
+
+// =============================================================================
+// SCORPIONS — Regras de segurança do Cloud Firestore
+// =============================================================================
+//
+// PRINCÍPIO (brief §7, §38): o cliente Flutter não é autoridade sobre nada.
+// A interface pode esconder um botão; quem decide se a escrita acontece é este
+// arquivo, avaliado no servidor. Toda regra abaixo parte do princípio de que o
+// aplicativo pode ter sido adulterado.
+//
+// LEITURA DESTE ARQUIVO: nada é permitido por padrão. Cada `allow` é uma
+// concessão explícita e mínima. A última regra nega tudo que não foi previsto.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Auxiliares
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // Lê o papel do próprio documento do usuário.
+    //
+    // CUSTO: cada chamada é uma leitura de documento cobrada. Por isso só é
+    // usada nos caminhos administrativos, que são raros. Os caminhos do usuário
+    // comum comparam `uid` diretamente, sem `get()`.
+    function role() {
+      return get(/databases/$(database)/documents/users/$(uid())).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(uid()))
+        && role() == 'admin';
+    }
+
+    // Conjunto de campos que a escrita está tentando modificar.
+    function changedFields() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && uid() == userId;
+    }
+
+    function isValidTimestamp(field) {
+      return request.resource.data[field] == request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{userId}  (brief §9)
+    // -------------------------------------------------------------------------
+    // Documento de perfil. A senha NÃO mora aqui — pertence ao Authentication.
+    //
+    // Campos: uid, name, email, role, createdAt, updatedAt.
+    //
+    // Contadores (identificationCount, etc.) foram deliberadamente deixados de
+    // fora: se o cliente pudesse escrevê-los, poderia inflar as próprias
+    // estatísticas. O perfil deriva os números da coleção de identificações.
+    // Quando a escala exigir denormalização, ela virá de uma Cloud Function.
+    match /users/{userId} {
+
+      function isValidUserShape() {
+        return request.resource.data.keys().hasOnly(
+                 ['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
+          && request.resource.data.uid is string
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 2
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.email is string
+          && request.resource.data.email.size() <= 320;
+      }
+
+      // Um usuário lê o próprio perfil. Admin lê qualquer um.
+      allow get: if isOwner(userId) || isAdmin();
+
+      // Listar usuários é operação administrativa: um usuário comum não pode
+      // enumerar a base.
+      allow list: if isAdmin();
+
+      // O documento é criado pelo próprio dono, com o uid batendo com a sessão.
+      //
+      // ESCALAÇÃO DE PRIVILÉGIO: `role` é fixado em 'user' pela regra. Mesmo
+      // que um cliente adulterado envie `role: 'admin'`, a escrita é recusada.
+      // Promover alguém a admin é operação de console/backend, nunca do app.
+      allow create: if isOwner(userId)
+        && isValidUserShape()
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'user'
+        && request.resource.data.email == request.auth.token.email
+        && isValidTimestamp('createdAt')
+        && isValidTimestamp('updatedAt');
+
+      // O usuário só altera o próprio nome. uid, email, role e createdAt são
+      // imutáveis a partir do cliente.
+      allow update: if isOwner(userId)
+        && isValidUserShape()
+        && changedFields().hasOnly(['name', 'updatedAt'])
+        && isValidTimestamp('updatedAt');
+
+      // Exclusão de conta (§37) envolve Authentication, Storage e as
+      // identificações — precisa de privilégio administrativo e roda em
+      // backend. Nunca a partir do aplicativo.
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // species/{speciesId}  (brief §10)
+    // -------------------------------------------------------------------------
+    // DECISÃO ARQUITETURAL: o catálogo é de LEITURA PÚBLICA.
+    //
+    // É conteúdo científico de referência, sem dado pessoal, e o produto quer
+    // que ele seja consultável — inclusive antes do cadastro, quando quem
+    // acabou de encontrar um escorpião precisa de informação imediatamente.
+    // Escrita é exclusiva de administradores.
+    match /species/{speciesId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // identifications/{identificationId}  (brief §11, §28)
+    // -------------------------------------------------------------------------
+    // Registros do usuário. Cada documento pertence a exatamente um `userId`.
+    match /identifications/{identificationId} {
+
+      function ownsExisting() {
+        return isSignedIn() && resource.data.userId == uid();
+      }
+
+      function ownsIncoming() {
+        return isSignedIn() && request.resource.data.userId == uid();
+      }
+
+      function isValidStatus(value) {
+        return value in ['processing', 'identified', 'low_confidence',
+                         'rejected', 'error'];
+      }
+
+      function isValidIdentification() {
+        return request.resource.data.userId is string
+          && isValidStatus(request.resource.data.status)
+          && request.resource.data.modelVersion is string
+          && request.resource.data.modelVersion.size() <= 64
+          // Confiança, quando existe, é uma probabilidade.
+          && (request.resource.data.confidence == null
+              || (request.resource.data.confidence is number
+                  && request.resource.data.confidence >= 0
+                  && request.resource.data.confidence <= 1))
+          && isValidTimestamp('createdAt');
+      }
+
+      // Leitura e listagem exigem que o documento seja do solicitante.
+      //
+      // Isto também resolve o §28 sem código: uma consulta sem
+      // `where('userId', '==', uid)` é recusada pelo servidor, porque o
+      // Firestore só autoriza uma listagem quando consegue provar que TODO
+      // resultado possível satisfaz a regra. Não há como buscar o histórico
+      // alheio, nem por engano.
+      allow read: if ownsExisting() || isAdmin();
+
+      allow create: if ownsIncoming() && isValidIdentification();
+
+      // Atualização mantém a posse e não permite transferir o registro para
+      // outro usuário.
+      allow update: if ownsExisting()
+        && ownsIncoming()
+        && request.resource.data.userId == resource.data.userId
+        && isValidStatus(request.resource.data.status);
+
+      // O usuário pode apagar o próprio registro (§36 — controle sobre os
+      // próprios dados). O arquivo no Storage é removido pelo aplicativo em
+      // seguida; a limpeza de órfãos fica para uma Function.
+      allow delete: if ownsExisting();
+    }
+
+    // -------------------------------------------------------------------------
+    // feedback/{feedbackId}  (Fase 8 — human-in-the-loop)
+    // -------------------------------------------------------------------------
+    // Criado agora apenas com a regra segura. Sem uso no aplicativo ainda.
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == uid()
+        && isValidTimestamp('createdAt');
+      allow read: if (isSignedIn() && resource.data.userId == uid()) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Negação final
+    // -------------------------------------------------------------------------
+    // Qualquer coleção não declarada acima é inacessível. Criar uma coleção
+    // nova exige escrever a regra dela — que é exatamente o comportamento
+    // desejado: nada nasce aberto por esquecimento.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

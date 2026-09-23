@@ -1,0 +1,50 @@
+name: scorpions
+description: "Identificacao cientifica de escorpioes por imagem"
+publish_to: 'none'
+
+# Versão de produto. Mantida em sincronia com AppConfig.version.
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # --- Navegação ------------------------------------------------------------
+  # go_router: rotas declarativas + StatefulShellRoute (abas com estado) +
+  # guarda de acesso centralizada. Ver app/router/.
+  go_router: ^17.0.0
+
+  # --- Estado ---------------------------------------------------------------
+  # provider: injeção e observação de ChangeNotifier sem geração de código
+  # (build_runner seria pesado nesta máquina). Substituível por Riverpod/Bloc
+  # sem tocar nas telas, pois elas só consomem context.watch<T>().
+  provider: ^6.1.2
+
+  # --- Câmera e imagens -----------------------------------------------------
+  # Ambos ficam atrás de interfaces em data/services/. Em plataformas sem
+  # suporte, os serviços caem para o modo simulado e o fluxo continua.
+  camera: ^0.11.0+2
+  image_picker: ^1.1.2
+  firebase_core: ^4.14.0
+  firebase_auth: ^6.6.1
+  cloud_firestore: ^6.9.0
+  firebase_storage: ^13.5.0
+  firebase_app_check: ^0.4.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Sem assets nesta fase: a identidade visual (marca, placas de espécie,
+  # ilustrações do onboarding) é desenhada com CustomPainter. Quando houver
+  # fotografias licenciadas (Fase 7), declare a pasta assets/ aqui.
