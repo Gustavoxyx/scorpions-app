@@ -1,15 +1,14 @@
 // =============================================================================
-// ARQUIVO PROVISÓRIO — gerado à mão, para o Emulator Suite.
+// GERADO POR `flutterfire configure` — não edite à mão.
 // =============================================================================
 //
-// Normalmente este arquivo é produzido por:
+// Aponta para o projeto de nuvem `scorpions-tcc-2026`. Para regenerar:
 //
-//     flutterfire configure
+//     flutterfire configure --project=scorpions-tcc-2026
 //
-// Enquanto não existe um projeto Firebase real, ele aponta para `demo-scorpions`,
-// que os SDKs tratam como projeto local: nada aqui alcança a nuvem. Rodar
-// `flutterfire configure` sobrescreve este arquivo com os valores reais e
-// nenhuma outra linha do projeto precisa mudar.
+// As opções do Emulator Suite ficam em `demo_firebase_options.dart`, que esta
+// ferramenta não toca. Quem escolhe entre os dois é `FirebaseBootstrap`,
+// conforme `--dart-define=DATA_SOURCE`.
 //
 // -----------------------------------------------------------------------------
 // ESTES VALORES NÃO SÃO SEGREDOS (brief §32)
@@ -47,36 +46,29 @@ class DefaultFirebaseOptions {
     };
   }
 
-  /// Identificador do projeto.
-  ///
-  /// O prefixo `demo-` é uma convenção reconhecida pelos SDKs e pela CLI: com
-  /// ele, os clientes só falam com emuladores. É a salvaguarda que impede um
-  /// teste de escrever em produção por engano (§20, §33).
-  static const String demoProjectId = 'demo-scorpions';
-
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'demo-api-key',
-    appId: '1:000000000000:web:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: demoProjectId,
-    authDomain: 'demo-scorpions.firebaseapp.com',
-    storageBucket: 'demo-scorpions.appspot.com',
+    apiKey: 'AIzaSyCeUs7TVfXdLcFBt7mGtE0YwNtufG3BSmo',
+    appId: '1:305720226190:web:601f0a127114c65312f4df',
+    messagingSenderId: '305720226190',
+    projectId: 'scorpions-tcc-2026',
+    authDomain: 'scorpions-tcc-2026.firebaseapp.com',
+    storageBucket: 'scorpions-tcc-2026.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'demo-api-key',
-    appId: '1:000000000000:android:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: demoProjectId,
-    storageBucket: 'demo-scorpions.appspot.com',
+    apiKey: 'AIzaSyBN1oLujn0xLKCwOL-Se2MTXd1lrAE8rpg',
+    appId: '1:305720226190:android:071fed1ec304fd9212f4df',
+    messagingSenderId: '305720226190',
+    projectId: 'scorpions-tcc-2026',
+    storageBucket: 'scorpions-tcc-2026.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'demo-api-key',
-    appId: '1:000000000000:ios:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: demoProjectId,
-    storageBucket: 'demo-scorpions.appspot.com',
+    apiKey: 'AIzaSyAf3dbEUmzz__HcgKeYxdaBIziENZzPxyA',
+    appId: '1:305720226190:ios:c61442f8d191d9ed12f4df',
+    messagingSenderId: '305720226190',
+    projectId: 'scorpions-tcc-2026',
+    storageBucket: 'scorpions-tcc-2026.firebasestorage.app',
+    iosClientId: '305720226190-p6hjaom1c73s3sl2h4qqi9juo148frp6.apps.googleusercontent.com',
     iosBundleId: 'com.scorpionslabs.scorpions',
   );
 }

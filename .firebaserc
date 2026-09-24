@@ -2,6 +2,6 @@
   "projects": {
     "default": "demo-scorpions",
     "emulator": "demo-scorpions",
-    "production": "telson-tcc-2026"
+    "production": "scorpions-tcc-2026"
   }
 }

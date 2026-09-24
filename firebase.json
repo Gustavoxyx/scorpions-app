@@ -7,10 +7,40 @@
     "rules": "firebase/storage.rules"
   },
   "emulators": {
-    "auth": { "port": 9099 },
-    "firestore": { "port": 8080 },
-    "storage": { "port": 9199 },
-    "ui": { "enabled": true, "port": 4000 },
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
     "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "scorpions-tcc-2026",
+          "appId": "1:305720226190:android:071fed1ec304fd9212f4df",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "scorpions-tcc-2026",
+          "configurations": {
+            "android": "1:305720226190:android:071fed1ec304fd9212f4df",
+            "ios": "1:305720226190:ios:c61442f8d191d9ed12f4df",
+            "web": "1:305720226190:web:601f0a127114c65312f4df"
+          }
+        }
+      }
+    }
   }
 }

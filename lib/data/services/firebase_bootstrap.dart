@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/app_environment.dart';
+import '../../demo_firebase_options.dart';
 import '../../firebase_options.dart';
 
 /// Inicialização do Firebase (ETAPAS 2, 9 e 15).
@@ -22,8 +23,16 @@ abstract final class FirebaseBootstrap {
   static Future<void> ensureInitialized() async {
     if (_initialized || !AppEnvironmentConfig.useFirebase) return;
 
+    // Qual projeto o cliente assume depende do modo do build.
+    //
+    // No emulador usamos `demo-scorpions`, cujo prefixo `demo-` faz os SDKs
+    // recusarem qualquer chamada para a nuvem. A alternativa -- inicializar
+    // sempre com as credenciais reais e confiar em `_connectEmulators()` --
+    // deixaria uma falha de redirecionamento escrevendo direto em producao.
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: AppEnvironmentConfig.dataSource.isEmulator
+          ? DemoFirebaseOptions.currentPlatform
+          : DefaultFirebaseOptions.currentPlatform,
     );
 
     if (AppEnvironmentConfig.dataSource.isEmulator) {
