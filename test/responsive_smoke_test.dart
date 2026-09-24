@@ -102,8 +102,14 @@ void main() {
 
     // As telas usam entradas escalonadas; sem avançar o relógio o teste
     // observaria apenas o primeiro quadro.
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pump(const Duration(seconds: 2));
+    //
+    // `pumpAndSettle` e não dois `pump` de duração fixa: um `RenderFlex` só
+    // reporta transbordo quando é pintado, e `Reveal` mantém os itens em
+    // opacidade zero até a vez de cada um chegar. Com quadros avulsos, os
+    // últimos itens da lista podiam nunca ser pintados dentro da janela
+    // observada — foi assim que um transbordo de 60px na tela de acesso
+    // passou despercebido por toda a Fase 2.
+    await tester.pumpAndSettle();
 
     expect(
       tester.takeException(),

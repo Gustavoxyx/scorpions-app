@@ -77,11 +77,9 @@ class _LoginPageState extends State<LoginPage> {
               style: context.text.bodySmall,
             ),
             AppSpacing.gapXxxl,
-            if (auth.errorMessage != null) ...<Widget>[
-              AuthErrorBanner(message: auth.errorMessage!),
-              AppSpacing.gapLg,
-            ],
+            AuthErrorSlot(message: auth.errorMessage),
             AppTextField(
+              key: const ValueKey<String>('login-email'),
               label: AppStrings.fieldEmail,
               controller: _email,
               hint: 'voce@exemplo.com',
@@ -94,6 +92,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             AppSpacing.gapLg,
             AppTextField(
+              key: const ValueKey<String>('login-senha'),
               label: AppStrings.fieldPassword,
               controller: _password,
               hint: '••••••••',
@@ -129,8 +128,12 @@ class _LoginPageState extends State<LoginPage> {
             AppSpacing.gapXxl,
             const SocialLoginPlaceholder(),
             AppSpacing.gapXxl,
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            // `Wrap` e não `Row`: a pergunta mais o botão passam de 358dp com a
+            // fonte no tamanho padrão, e estouravam a largura em tela de 390.
+            // Aqui a linha quebra em duas em vez de transbordar.
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: <Widget>[
                 Text(
                   AppStrings.noAccount,

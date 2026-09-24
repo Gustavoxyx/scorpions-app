@@ -68,11 +68,9 @@ class _RegisterPageState extends State<RegisterPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            if (auth.errorMessage != null) ...<Widget>[
-              AuthErrorBanner(message: auth.errorMessage!),
-              AppSpacing.gapLg,
-            ],
+            AuthErrorSlot(message: auth.errorMessage),
             AppTextField(
+              key: const ValueKey<String>('cadastro-nome'),
               label: AppStrings.fieldName,
               controller: _name,
               hint: 'Como devemos chamar você',
@@ -84,6 +82,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             AppSpacing.gapLg,
             AppTextField(
+              key: const ValueKey<String>('cadastro-email'),
               label: AppStrings.fieldEmail,
               controller: _email,
               hint: 'voce@exemplo.com',
@@ -96,6 +95,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             AppSpacing.gapLg,
             AppTextField(
+              key: const ValueKey<String>('cadastro-senha'),
               label: AppStrings.fieldPassword,
               controller: _password,
               hint: 'Mínimo de ${Validators.minPasswordLength} caracteres',
@@ -113,6 +113,7 @@ class _RegisterPageState extends State<RegisterPage> {
             _StrengthBar(value: _strength),
             AppSpacing.gapLg,
             AppTextField(
+              key: const ValueKey<String>('cadastro-confirmar'),
               label: AppStrings.fieldPasswordConfirm,
               controller: _confirm,
               hint: 'Repita a senha',

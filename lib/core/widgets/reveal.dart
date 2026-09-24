@@ -26,7 +26,12 @@ class Reveal extends StatefulWidget {
     double offset = 16,
   }) {
     return List<Widget>.generate(children.length, (int i) {
+      // A chave do filho sobe para o embrulho. Sem isso ela ficaria invisível
+      // para a Column, que enxerga apenas os `Reveal` — e um filho com chave
+      // continuaria sendo reconciliado por posição.
+      final Key? chave = children[i].key;
       return Reveal(
+        key: chave == null ? null : ValueKey<Key>(chave),
         delay: initialDelay + step * i,
         offset: offset,
         child: children[i],

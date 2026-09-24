@@ -40,3 +40,35 @@ class AuthErrorBanner extends StatelessWidget {
     );
   }
 }
+
+
+/// Reserva **sempre** o lugar do banner na lista de filhos do formulário.
+///
+/// # Por que isto existe
+/// `Column` reconcilia os filhos por posição. Enquanto o banner entrava e
+/// saía da lista, tudo abaixo dele deslizava duas posições e o Flutter
+/// inflava elementos novos no lugar dos antigos — descartando o `State` dos
+/// campos de texto e, junto com ele, o `FocusNode` de cada um.
+///
+/// O efeito para o usuário era este: depois de um login recusado, a primeira
+/// tecla digitada na senha chamava `clearError()`, o banner sumia, os campos
+/// eram recriados e o foco evaporava. Dava a impressão de campo travado.
+///
+/// Mantendo um slot de altura zero quando não há erro, o comprimento da lista
+/// nunca muda e nada desliza.
+class AuthErrorSlot extends StatelessWidget {
+  const AuthErrorSlot({super.key, required this.message});
+
+  /// Mensagem atual, ou `null` quando não há erro.
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? m = message;
+    if (m == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: AuthErrorBanner(message: m),
+    );
+  }
+}
