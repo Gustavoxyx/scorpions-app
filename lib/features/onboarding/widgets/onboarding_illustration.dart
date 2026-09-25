@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/scorpion_animation.dart';
 import '../../../core/widgets/scorpion_mark.dart';
 import '../../camera/widgets/frame_guide.dart';
 
@@ -23,7 +24,10 @@ class OnboardingIllustration extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (art) {
-      OnboardingArt.capture => const _CaptureArt(),
+      // O único passo com arte animada. Os outros dois seguem vetoriais:
+      // uma animação por apresentação chama atenção, três viram ruído.
+      OnboardingArt.capture =>
+        const ScorpionAnimation(reducedMotionFallback: _CaptureArt()),
       OnboardingArt.knowledge => const _KnowledgeArt(),
       OnboardingArt.safety => const _SafetyArt(),
     };
