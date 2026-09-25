@@ -86,6 +86,10 @@ class IdentificationResult {
     required this.modelVersion,
     required this.userId,
     required this.imageUrl,
+    this.thumbnailUrl,
+    this.imageQuality,
+    this.errorCode,
+    this.pipelineVersion = pipelineV1,
   });
 
   factory IdentificationResult.identified({
@@ -145,6 +149,46 @@ class IdentificationResult {
     );
   }
 
+  /// Registro recém-criado, ainda sem análise (briefing Fase 4, §10).
+  ///
+  /// É o estado normal de toda identificação nesta fase: a imagem foi
+  /// validada, medida, processada e enviada, e o modelo que responderia
+  /// "qual espécie" ainda não existe. Gravar `processing` é a forma honesta
+  /// de dizer isso — e é o estado que a Fase 5 vai encontrar para preencher.
+  factory IdentificationResult.processing({
+    required String id,
+    required CapturedImage image,
+    String? userId,
+    String? imageUrl,
+    String? thumbnailUrl,
+    Map<String, Object?>? imageQuality,
+    DateTime? createdAt,
+  }) {
+    return IdentificationResult._(
+      id: id,
+      image: image,
+      createdAt: createdAt ?? DateTime.now(),
+      predictions: const <SpeciesPrediction>[],
+      rejectionReason: null,
+      isMock: true,
+      status: IdentificationStatus.processing,
+      modelVersion: mockModelVersion,
+      userId: userId,
+      imageUrl: imageUrl,
+      thumbnailUrl: thumbnailUrl,
+      imageQuality: imageQuality,
+    );
+  }
+
+  /// Versão do pipeline de imagem que produziu o registro (§26).
+  ///
+  /// Separada de [modelVersion] de propósito: são duas coisas que vão mudar
+  /// em ritmos diferentes. Trocar o limiar de nitidez muda o pipeline sem
+  /// tocar no modelo; trocar o classificador muda o modelo sem tocar no
+  /// pipeline. Com um campo só, "reprocessar tudo que veio da versão X" vira
+  /// uma pergunta sem resposta.
+  static const String pipelineV1 = 'pipeline-v1';
+
   /// Versão do motor de identificação usada nesta fase (brief §13).
   ///
   /// Gravar isto desde já é o que vai permitir, quando o modelo real existir,
@@ -180,6 +224,23 @@ class IdentificationResult {
   /// Caminho no Cloud Storage, depois do upload.
   final String? imageUrl;
 
+  /// Caminho da miniatura. Existe para que abrir o histórico não baixe a
+  /// imagem cheia de cada item.
+  final String? thumbnailUrl;
+
+  /// Medidas de qualidade da fotografia, como gravadas.
+  ///
+  /// Mapa opaco e não objeto tipado: aqui ele é registro, não regra. Guardar
+  /// as medidas permite recalibrar limiares na Fase 6 e reavaliar o que já
+  /// foi coletado sem pedir foto nova a ninguém.
+  final Map<String, Object?>? imageQuality;
+
+  /// Código técnico da falha, quando [status] é `error`. Nunca exibido.
+  final String? errorCode;
+
+  /// Versão do pipeline de imagem (§26).
+  final String pipelineVersion;
+
   bool get isRejected => rejectionReason != null;
 
   SpeciesPrediction get top => predictions.first;
@@ -192,7 +253,10 @@ class IdentificationResult {
   IdentificationResult copyWith({
     String? userId,
     String? imageUrl,
+    String? thumbnailUrl,
     CapturedImage? image,
+    Map<String, Object?>? imageQuality,
+    String? errorCode,
   }) {
     return IdentificationResult._(
       id: id,
@@ -205,6 +269,10 @@ class IdentificationResult {
       modelVersion: modelVersion,
       userId: userId ?? this.userId,
       imageUrl: imageUrl ?? this.imageUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      imageQuality: imageQuality ?? this.imageQuality,
+      errorCode: errorCode ?? this.errorCode,
+      pipelineVersion: pipelineVersion,
     );
   }
 
@@ -217,8 +285,12 @@ class IdentificationResult {
   Map<String, Object?> toMap() => <String, Object?>{
         'userId': userId,
         'imageUrl': imageUrl,
+        'thumbnailUrl': thumbnailUrl,
         'status': status.id,
         'modelVersion': modelVersion,
+        'pipelineVersion': pipelineVersion,
+        'imageQuality': imageQuality,
+        'errorCode': errorCode,
         'isMock': isMock,
         'createdAt': FirestoreCodec.serverTimestamp,
 
@@ -257,6 +329,17 @@ class IdentificationResult {
     final bool isMock = FirestoreCodec.boolean(map['isMock'], fallback: true);
     final String? userId = FirestoreCodec.stringOrNull(map['userId']);
     final String? imageUrl = FirestoreCodec.stringOrNull(map['imageUrl']);
+    final String? thumbnailUrl =
+        FirestoreCodec.stringOrNull(map['thumbnailUrl']);
+    final Map<String, dynamic> qualidade =
+        FirestoreCodec.map(map['imageQuality']);
+    final Map<String, Object?>? imageQuality =
+        qualidade.isEmpty ? null : Map<String, Object?>.from(qualidade);
+    final String? errorCode = FirestoreCodec.stringOrNull(map['errorCode']);
+    final String pipelineVersion = FirestoreCodec.string(
+      map['pipelineVersion'],
+      fallback: pipelineV1,
+    );
 
     // A imagem local não existe num registro vindo do banco; a tela usa a URL.
     final CapturedImage image = CapturedImage.remote(
@@ -276,6 +359,10 @@ class IdentificationResult {
         modelVersion: modelVersion,
         userId: userId,
         imageUrl: imageUrl,
+        thumbnailUrl: thumbnailUrl,
+        imageQuality: imageQuality,
+        errorCode: errorCode,
+        pipelineVersion: pipelineVersion,
       );
     }
 
@@ -318,6 +405,10 @@ class IdentificationResult {
       modelVersion: modelVersion,
       userId: userId,
       imageUrl: imageUrl,
+      thumbnailUrl: thumbnailUrl,
+      imageQuality: imageQuality,
+      errorCode: errorCode,
+      pipelineVersion: pipelineVersion,
     );
   }
 }
