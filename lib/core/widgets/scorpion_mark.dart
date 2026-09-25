@@ -1,8 +1,6 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../constants/app_config.dart';
 import '../theme/app_theme.dart';
 
 /// Marca do produto: uma silhueta vetorial de escorpião, vista de cima.
@@ -216,65 +214,4 @@ class _ScorpionPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ScorpionPainter old) =>
       old.color != color || old.glow != glow || old.strokeScale != strokeScale;
-}
-
-/// Logotipo: marca + nome. Usado no splash, no login e no cabeçalho "Sobre".
-class AppLogo extends StatelessWidget {
-  const AppLogo({
-    super.key,
-    this.markSize = 44,
-    this.showWordmark = true,
-    this.glow = 0,
-    this.axis = Axis.horizontal,
-  });
-
-  final double markSize;
-  final bool showWordmark;
-  final double glow;
-  final Axis axis;
-
-  @override
-  Widget build(BuildContext context) {
-    final Widget mark = ScorpionMark(size: markSize, glow: glow);
-    if (!showWordmark) return mark;
-
-    final Widget word = _Wordmark(fontSize: markSize * 0.46);
-    return axis == Axis.horizontal
-        ? Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[mark, SizedBox(width: markSize * 0.28), word],
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[mark, SizedBox(height: markSize * 0.34), word],
-          );
-  }
-}
-
-class _Wordmark extends StatelessWidget {
-  const _Wordmark({required this.fontSize});
-
-  final double fontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    // Tracking largo: leitura de instrumento, não de aplicativo de consumo.
-    //
-    // O texto vem de AppConfig.appName em vez de um literal — a marca e o
-    // nome do produto não podem divergir sem ninguém perceber, que foi
-    // exatamente o risco na troca de Telson para Scorpions.
-    //
-    // O espaçamento é menor que o original porque a palavra passou de 6
-    // para 9 letras: mantido o valor antigo, o logotipo estourava a
-    // largura em telas de 320dp.
-    return Text(
-      AppConfig.appName.toUpperCase(),
-      style: context.text.display.copyWith(
-        fontSize: fontSize,
-        letterSpacing: math.max(1.2, fontSize * 0.14),
-        fontWeight: FontWeight.w700,
-        color: context.colors.textPrimary,
-      ),
-    );
-  }
 }

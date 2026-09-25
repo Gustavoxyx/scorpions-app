@@ -4,8 +4,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/captured_image.dart';
+import '../models/image_validation.dart';
 import 'failure.dart';
 import 'firebase_error_mapper.dart';
+import 'image_validator.dart';
 
 /// Envio das fotografias para o Cloud Storage (brief §14, §16).
 abstract interface class ImageUploadService {
@@ -43,17 +45,6 @@ class FirebaseImageUploadService implements ImageUploadService {
 
   final FirebaseStorage _storage;
 
-  /// Mesmo limite das Storage Rules. Duplicado de propósito: aqui evita gastar
-  /// a rede do usuário com um envio que o servidor recusaria de qualquer jeito.
-  static const int maxBytes = 8 * 1024 * 1024;
-
-  static const List<String> _allowedExtensions = <String>[
-    'jpg',
-    'jpeg',
-    'png',
-    'webp',
-  ];
-
   @override
   Future<String?> upload({
     required CapturedImage image,
@@ -63,11 +54,9 @@ class FirebaseImageUploadService implements ImageUploadService {
     if (!image.isUploadable) return null;
 
     final Uint8List bytes = await _readBytes(image);
-    _validate(bytes, image);
-
-    final String extension = _extensionOf(image);
-    final String path =
-        'users/$userId/identifications/$identificationId/original.$extension';
+    final ImageFormat formato = _validate(bytes);
+    final String path = 'users/$userId/identifications/$identificationId/'
+        'original.${formato.extension}';
 
     return FirebaseErrorMapper.guard(
       () async {
@@ -75,7 +64,7 @@ class FirebaseImageUploadService implements ImageUploadService {
         await ref.putData(
           bytes,
           SettableMetadata(
-            contentType: _contentTypeFor(extension),
+            contentType: formato.mimeType,
             // Metadado sem dado pessoal (§15): nada de localização, nome do
             // arquivo original ou identificador do aparelho.
             customMetadata: <String, String>{
@@ -99,9 +88,9 @@ class FirebaseImageUploadService implements ImageUploadService {
     // `original` é o único arquivo que esta fase grava; os demais nomes já
     // constam porque a Fase 4 vai gerá-los.
     for (final String name in <String>['original', 'processed', 'thumbnail']) {
-      for (final String extension in _allowedExtensions) {
+      for (final ImageFormat f in ImageFormat.values) {
         try {
-          await _storage.ref('$prefix/$name.$extension').delete();
+          await _storage.ref('$prefix/$name.${f.extension}').delete();
         } catch (_) {
           // Arquivo inexistente é o caso normal — não é erro.
         }
@@ -123,71 +112,25 @@ class FirebaseImageUploadService implements ImageUploadService {
     );
   }
 
-  void _validate(Uint8List bytes, CapturedImage image) {
-    if (bytes.isEmpty) {
-      throw const AppFailure(
-        kind: FailureKind.validation,
-        message: 'A imagem está vazia. Tire outra foto.',
-        code: 'empty-image',
-      );
-    }
-    if (bytes.length > maxBytes) {
-      throw const AppFailure(
-        kind: FailureKind.validation,
-        message: 'A imagem é grande demais. Tente uma foto menor.',
-        code: 'image-too-large',
-      );
-    }
-    if (!_hasImageSignature(bytes)) {
-      throw const AppFailure(
-        kind: FailureKind.validation,
-        message: 'Este arquivo não parece ser uma imagem válida.',
-        code: 'invalid-image-signature',
-      );
-    }
-  }
-
-  /// Confere os "números mágicos" no início do arquivo.
+  /// Confere o que dá para conferir antes de gastar a rede do usuário.
   ///
-  /// JPEG: `FF D8 FF` · PNG: `89 50 4E 47` · WebP: `RIFF....WEBP`.
-  static bool _hasImageSignature(Uint8List bytes) {
-    if (bytes.length < 12) return false;
-
-    final bool isJpeg =
-        bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
-    if (isJpeg) return true;
-
-    final bool isPng = bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47;
-    if (isPng) return true;
-
-    final bool isWebp = bytes[0] == 0x52 && // R
-        bytes[1] == 0x49 && // I
-        bytes[2] == 0x46 && // F
-        bytes[3] == 0x46 && // F
-        bytes[8] == 0x57 && // W
-        bytes[9] == 0x45 && // E
-        bytes[10] == 0x42 && // B
-        bytes[11] == 0x50; // P
-    return isWebp;
+  /// Delega ao [ImageValidator], que é a mesma regra aplicada na entrada do
+  /// pipeline. Antes existia uma segunda cópia aqui — outro teto de tamanho,
+  /// outra lista de formatos, outra leitura de assinatura — e duas cópias de
+  /// uma regra são duas regras esperando para divergir.
+  ///
+  /// As Storage Rules continuam sendo a autoridade: isto evita a viagem, não
+  /// substitui a autorização.
+  ImageFormat _validate(Uint8List bytes) {
+    final ImageValidationResult r = const ImageValidator().validate(bytes);
+    if (r.isValid) return r.format!;
+    throw AppFailure(
+      kind: FailureKind.validation,
+      message: r.message,
+      code: r.code.name,
+    );
   }
 
-  static String _extensionOf(CapturedImage image) {
-    final String? path = image.path;
-    if (path == null) return 'jpg';
-    final int dot = path.lastIndexOf('.');
-    if (dot < 0 || dot == path.length - 1) return 'jpg';
-    final String extension = path.substring(dot + 1).toLowerCase();
-    return _allowedExtensions.contains(extension) ? extension : 'jpg';
-  }
-
-  static String _contentTypeFor(String extension) => switch (extension) {
-        'png' => 'image/png',
-        'webp' => 'image/webp',
-        _ => 'image/jpeg',
-      };
 }
 
 /// Sem upload: usada nos modos simulado e de teste.

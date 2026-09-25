@@ -15,7 +15,7 @@ abstract final class AppConfig {
   static const String appTagline = 'Identificação científica de escorpiões';
 
   static const String version = '0.2.0';
-  static const String phaseLabel = 'Fase 2 · Identidade visual';
+  static const String phaseLabel = 'Fase 4 · Pipeline de imagem';
 
   /// Abre o aplicativo já autenticado, pulando onboarding e login.
   ///
@@ -44,8 +44,6 @@ abstract final class AppConfig {
   /// de dados fictícios exibido na UI e será desligado quando a IA real entrar.
   static const bool useMockIdentification = true;
 
-  /// FASE 1: autenticação local em memória. Vira `false` na Fase 3 (Firebase).
-  static const bool useMockAuth = true;
 
   /// Duração simulada da análise. Some quando o modelo real assumir.
   static const Duration mockAnalysisDuration = Duration(milliseconds: 4200);
