@@ -44,6 +44,17 @@ class FirebaseAuthRepository implements AuthRepository {
 
   AppUser? _current;
 
+  /// Nome digitado no cadastro, reservado até o documento existir.
+  ///
+  /// `createUserWithEmailAndPassword` já deixa o usuário autenticado, e
+  /// `_onAuthStateChanged` dispara nesse instante — antes de
+  /// `updateDisplayName` completar a ida ao servidor. Sem esta reserva era o
+  /// ouvinte que criava o documento, com o nome derivado do e-mail, e o
+  /// `signUp` encontrava o documento pronto e devolvia o nome errado. O que a
+  /// pessoa digitou sumia sem erro nenhum — e ficava assim, porque o
+  /// aplicativo ainda não tem tela para renomear.
+  String? _pendingName;
+
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
 
@@ -78,20 +89,25 @@ class FirebaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    return FirebaseErrorMapper.guard(() async {
-      final fb.UserCredential credential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-      final fb.User user = _requireUser(credential.user);
+    _pendingName = name.trim();
+    try {
+      return await FirebaseErrorMapper.guard(() async {
+        final fb.UserCredential credential =
+            await _auth.createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+        final fb.User user = _requireUser(credential.user);
 
-      // O nome vai para o Authentication também: assim ele sobrevive mesmo que
-      // o documento precise ser recriado.
-      await user.updateDisplayName(name.trim());
+        // O nome vai para o Authentication também: assim ele sobrevive mesmo
+        // que o documento precise ser recriado.
+        await user.updateDisplayName(name.trim());
 
-      return _ensureProfile(user, fallbackName: name.trim());
-    });
+        return _ensureProfile(user, fallbackName: name.trim());
+      });
+    } finally {
+      _pendingName = null;
+    }
   }
 
   @override
@@ -118,7 +134,12 @@ class FirebaseAuthRepository implements AuthRepository {
       return;
     }
     try {
-      _emit(await _ensureProfile(user, fallbackName: _nameFromEmail(user.email)));
+      // Se um cadastro está em curso, o nome digitado vale mais que o
+      // derivado do e-mail — seja qual for o caminho que criar o documento.
+      _emit(await _ensureProfile(
+        user,
+        fallbackName: _pendingName ?? _nameFromEmail(user.email),
+      ));
     } on AppFailure {
       // Falha ao ler o perfil não pode derrubar a sessão. Emitimos o que dá
       // para saber a partir do Authentication e a tela segue funcionando; a
