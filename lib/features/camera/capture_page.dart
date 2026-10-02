@@ -13,7 +13,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/feedback_states.dart';
 import '../../data/models/captured_image.dart';
+import '../../app/dependencies.dart';
 import '../../data/services/camera_service.dart';
+import '../../data/services/permission_service.dart';
 import '../../data/services/gallery_service.dart';
 import '../../state/identification_controller.dart';
 import 'camera_session.dart';
@@ -39,6 +41,13 @@ class CapturePage extends StatefulWidget {
 
 class _CapturePageState extends State<CapturePage> {
   late final CameraSession _session;
+
+  /// Última resposta do sistema sobre a permissão de câmera (§17).
+  ///
+  /// Guardada porque "negado" e "negado para sempre" pedem botões diferentes:
+  /// no primeiro caso perguntar de novo resolve, no segundo o sistema nem
+  /// mostra mais o diálogo e o único caminho é os ajustes do aparelho.
+  PermissionState _permissao = PermissionState.notApplicable;
   bool _busy = false;
 
   @override
@@ -68,6 +77,25 @@ class _CapturePageState extends State<CapturePage> {
     final CapturedImage? image = await _session.capture();
     if (mounted) setState(() => _busy = false);
     await _handleImage(image);
+  }
+
+  /// Pede a permissão pelo sistema e reage à resposta.
+  ///
+  /// Antes este botão apenas re-sondava o hardware, o que em aparelho com
+  /// permissão negada repetia a mesma tela sem explicar nada.
+  Future<void> _pedirPermissao() async {
+    final PermissionService servico =
+        context.read<AppDependencies>().permissionService;
+    final PermissionState r = await servico.requestCamera();
+    if (!mounted) return;
+    setState(() => _permissao = r);
+    if (r == PermissionState.granted || r == PermissionState.notApplicable) {
+      await _session.start();
+    }
+  }
+
+  Future<void> _abrirAjustes() async {
+    await context.read<AppDependencies>().permissionService.openSettings();
   }
 
   Future<void> _pickFromGallery() async {
@@ -157,7 +185,9 @@ class _CapturePageState extends State<CapturePage> {
           child: CircularProgressIndicator(strokeWidth: 2.4),
         ),
       CameraSessionStatus.permissionDenied => _PermissionState(
-          onRetry: _session.start,
+          permissao: _permissao,
+          onRetry: _pedirPermissao,
+          onSettings: _abrirAjustes,
           onGallery: _pickFromGallery,
         ),
       CameraSessionStatus.unavailable => _UnavailableState(
@@ -281,19 +311,45 @@ class _TopBar extends StatelessWidget {
 }
 
 class _PermissionState extends StatelessWidget {
-  const _PermissionState({required this.onRetry, required this.onGallery});
+  const _PermissionState({
+    required this.permissao,
+    required this.onRetry,
+    required this.onSettings,
+    required this.onGallery,
+  });
 
+  final PermissionState permissao;
   final VoidCallback onRetry;
+  final VoidCallback onSettings;
   final VoidCallback onGallery;
 
   @override
   Widget build(BuildContext context) {
+    // Negativa definitiva: insistir no pedido não produz nem diálogo. Dizer
+    // "permitir acesso" aqui seria um botão que não faz nada.
+    final bool definitivo = permissao == PermissionState.permanentlyDenied;
+    final bool bloqueado = permissao == PermissionState.restricted;
+
     return _AlternativePanel(
       icon: Icons.no_photography_outlined,
       title: AppStrings.cameraPermissionTitle,
-      message: AppStrings.cameraPermissionBody,
-      primaryLabel: AppStrings.cameraPermissionAction,
-      onPrimary: onRetry,
+      message: bloqueado
+          ? 'O acesso à câmera está bloqueado por uma restrição deste '
+              'aparelho. Use a galeria para escolher uma foto.'
+          : definitivo
+              ? 'A permissão foi negada antes, e o sistema não pergunta de '
+                  'novo. Para liberar, abra os ajustes do aparelho.'
+              : AppStrings.cameraPermissionBody,
+      primaryLabel: definitivo
+          ? 'Abrir ajustes'
+          : bloqueado
+              ? AppStrings.cameraGallery
+              : AppStrings.cameraPermissionAction,
+      onPrimary: definitivo
+          ? onSettings
+          : bloqueado
+              ? onGallery
+              : onRetry,
       secondaryLabel: AppStrings.cameraGallery,
       onSecondary: onGallery,
     );
