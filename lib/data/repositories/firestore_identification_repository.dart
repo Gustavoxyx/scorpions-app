@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
-import 'package:flutter/foundation.dart';
 
 import '../models/identification.dart';
 import '../services/failure.dart';
@@ -94,57 +93,20 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
     return FirebaseErrorMapper.guard(() async {
       final String uid = _uid;
 
-      // 1. Imagem primeiro (ver nota da classe).
-      String? imageUrl = result.imageUrl;
-      if (imageUrl == null && result.image.isUploadable) {
-        imageUrl = await _uploadOrSkip(uid: uid, result: result);
-      }
-
-      // 2. Documento com a referência já resolvida.
-      final IdentificationResult owned =
-          result.copyWith(userId: uid, imageUrl: imageUrl);
+      // Este repositório **não envia imagem**. Quem envia é o
+      // `IdentificationPipeline`, e depois liga os caminhos com
+      // [attachImages].
+      //
+      // Antes a gravação tentava enviar por conta própria, e o resultado era um
+      // envio duplicado do original: o pipeline já mandava as três formas logo
+      // em seguida. Persistir e transferir arquivo são trabalhos diferentes, e
+      // misturar os dois cobrou a banda do usuário duas vezes.
+      final IdentificationResult owned = result.copyWith(userId: uid);
 
       await _collection
           .doc(result.id)
           .set(FirestoreWriteMapper.prepare(owned.toMap()));
     });
-  }
-
-  /// Tenta enviar a imagem; devolve `null` se não der.
-  ///
-  /// # Por que a falha de upload não derruba o salvamento
-  /// A identificação vale mais que a fotografia. Se o Storage estiver
-  /// indisponível — sem rede no meio do envio, cota estourada, ou o bucket
-  /// simplesmente não provisionado — o usuário perderia o resultado inteiro
-  /// por causa de um anexo. O registro é gravado sem imagem e o histórico
-  /// continua correto; `imageUrl` nulo já é um estado que a UI sabe desenhar,
-  /// porque é o mesmo caso do modo simulado.
-  ///
-  /// Isto também é o que permite rodar no plano gratuito do Firebase, onde o
-  /// Cloud Storage não está disponível: Auth e Firestore funcionam, e as fotos
-  /// ficam para quando houver bucket.
-  ///
-  /// Erros de **validação** são a exceção e sobem: uma imagem corrompida ou
-  /// grande demais é problema que o usuário pode corrigir, e silenciá-lo o
-  /// deixaria sem saber por que a foto sumiu.
-  Future<String?> _uploadOrSkip({
-    required String uid,
-    required IdentificationResult result,
-  }) async {
-    try {
-      return await _uploader.upload(
-        image: result.image,
-        userId: uid,
-        identificationId: result.id,
-      );
-    } on AppFailure catch (failure) {
-      if (failure.kind == FailureKind.validation) rethrow;
-      debugPrint(
-        '[Scorpions] imagem não enviada (${failure.code}); '
-        'a identificação será salva sem foto.',
-      );
-      return null;
-    }
   }
 
   @override

@@ -2,15 +2,12 @@
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/captured_image.dart';
 import '../models/image_validation.dart';
 import '../models/processed_image.dart';
 import '../../core/constants/image_limits.dart';
 import '../../core/observability/app_log.dart';
 import 'failure.dart';
 import 'firebase_error_mapper.dart';
-import 'image_bytes_reader.dart';
-import 'image_validator.dart';
 
 /// Envio das fotografias para o Cloud Storage (brief §14, §16).
 /// Onde cada forma da imagem foi parar.
@@ -43,13 +40,6 @@ class UploadedImagePaths {
 }
 
 abstract interface class ImageUploadService {
-  /// Envia a imagem e devolve o caminho gravado no documento.
-  Future<String?> upload({
-    required CapturedImage image,
-    required String userId,
-    required String identificationId,
-  });
-
   /// Envia as três formas da imagem (briefing Fase 4, §9).
   ///
   /// Degrada por partes: cada arquivo que não subir vira um caminho nulo, e os
@@ -88,40 +78,6 @@ class FirebaseImageUploadService implements ImageUploadService {
       : _storage = storage ?? FirebaseStorage.instance;
 
   final FirebaseStorage _storage;
-
-  @override
-  Future<String?> upload({
-    required CapturedImage image,
-    required String userId,
-    required String identificationId,
-  }) async {
-    if (!image.isUploadable) return null;
-
-    final Uint8List bytes = await readImageBytes(image);
-    final ImageFormat formato = _validate(bytes);
-    final String path = 'users/$userId/identifications/$identificationId/'
-        'original.${formato.extension}';
-
-    return FirebaseErrorMapper.guard(
-      () async {
-        final Reference ref = _storage.ref(path);
-        await ref.putData(
-          bytes,
-          SettableMetadata(
-            contentType: formato.mimeType,
-            // Metadado sem dado pessoal (§15): nada de localização, nome do
-            // arquivo original ou identificador do aparelho.
-            customMetadata: <String, String>{
-              'identificationId': identificationId,
-            },
-          ),
-        );
-        return path;
-      },
-      // Upload de imagem em rede móvel merece mais paciência que uma leitura.
-      timeout: const Duration(seconds: 90),
-    );
-  }
 
   @override
   Future<UploadedImagePaths> uploadAll({
@@ -211,25 +167,6 @@ class FirebaseImageUploadService implements ImageUploadService {
 
   // -- Interno ----------------------------------------------------------------
 
-  /// Confere o que dá para conferir antes de gastar a rede do usuário.
-  ///
-  /// Delega ao [ImageValidator], que é a mesma regra aplicada na entrada do
-  /// pipeline. Antes existia uma segunda cópia aqui — outro teto de tamanho,
-  /// outra lista de formatos, outra leitura de assinatura — e duas cópias de
-  /// uma regra são duas regras esperando para divergir.
-  ///
-  /// As Storage Rules continuam sendo a autoridade: isto evita a viagem, não
-  /// substitui a autorização.
-  ImageFormat _validate(Uint8List bytes) {
-    final ImageValidationResult r = const ImageValidator().validate(bytes);
-    if (r.isValid) return r.format!;
-    throw AppFailure(
-      kind: FailureKind.validation,
-      message: r.message,
-      code: r.code.name,
-    );
-  }
-
 }
 
 /// Par nome/forma, só para a fila de envio ficar legível.
@@ -251,14 +188,6 @@ class NoopImageUploadService implements ImageUploadService {
     required String identificationId,
   }) async =>
       const UploadedImagePaths.none();
-
-  @override
-  Future<String?> upload({
-    required CapturedImage image,
-    required String userId,
-    required String identificationId,
-  }) async =>
-      null;
 
   @override
   Future<void> deleteFor({

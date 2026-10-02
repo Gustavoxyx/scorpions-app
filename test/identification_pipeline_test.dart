@@ -119,14 +119,6 @@ class _UploaderFalso implements ImageUploadService {
   }
 
   @override
-  Future<String?> upload({
-    required CapturedImage image,
-    required String userId,
-    required String identificationId,
-  }) async =>
-      null;
-
-  @override
   Future<void> deleteFor({
     required String userId,
     required String identificationId,
