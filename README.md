@@ -1,10 +1,9 @@
 # Scorpions — Identificação científica de escorpiões por IA
 
-> **Fase 3 — Backend, autenticação e infraestrutura.** *(Fases 1 e 2
-> concluídas.)*
-> A identificação continua **simulada** (§40) — o que mudou é onde o resultado
-> é gravado. Autenticação, banco, storage e regras de segurança são reais e
-> testados. A IA entra na Fase 5.
+> **Fase 4 — Pipeline real de imagem.** *(Fases 1, 2 e 3 concluídas.)*
+> A fotografia agora é **validada, medida, processada e enviada de verdade**.
+> O que ainda não existe é o modelo: uma identificação nova fica em
+> `processing`, e nenhuma espécie é inventada. A IA entra na Fase 5.
 >
 > Roda em três modos: `mock` (memória), `emulator` (local) e `firebase` (nuvem).
 > Ver [firebase/README.md](firebase/README.md).
@@ -241,9 +240,48 @@ faixa listrada em execução e **desaparece silenciosamente em release**. Na Fas
 este teste encontrou dois estouros reais em 320dp que nenhuma inspeção visual
 havia pego.
 
+## 12. Pipeline de imagem (Fase 4)
+
+```
+foto  ->  validar  ->  medir qualidade  ->  derivar 3 formas
+                                              |
+                       registrar (processing) |
+                                              v
+                            enviar  ->  ligar imagens ao registro
+```
+
+Validar, medir e derivar acontecem numa **única decodificação**, dentro de um
+isolate. Não é microtimização: decodificar uma foto de 12 MP custa ~48 MB de
+heap, e repetir isso três vezes num aparelho de entrada é a diferença entre o
+aplicativo responder e ser encerrado pelo sistema. Na web não existe isolate e
+o trabalho roda na mesma thread — por isso os limites são conservadores.
+
+| Peça | Responsabilidade |
+|---|---|
+| `ImageValidator` | vale a pena gastar CPU e rede com esta imagem? |
+| `ImageQualityService` | brilho, contraste e nitidez |
+| `MetadataStripper` | remove EXIF e GPS **sem recomprimir** |
+| `ImageProcessingService` | as três formas, numa passada |
+| `IdentificationPipeline` | a sequência inteira, incluindo cancelamento |
+
+**As três formas** (§7): `original` é o registro científico, com os pixels
+preservados; `processed` (≤ 1600 px) é o que a análise vai consumir;
+`thumbnail` (≤ 320 px) existe para que abrir o histórico não baixe megabytes.
+
+**Privacidade** (§8): a foto de um celular carrega coordenadas de GPS no EXIF.
+Elas são removidas andando pelos segmentos do JPEG, sem recomprimir —
+reencodar limparia de graça, mas degradaria o registro original. Quando o
+arquivo traz etiqueta de rotação, a recompressão é inevitável: apagar o EXIF
+apagaria junto o pedido de girar, e o original abriria deitado.
+
+**O que o pipeline não faz:** identificar. `ScorpionDetectionService` e
+`SpeciesClassificationService` existem como contratos e respondem **"não
+avaliado"**. Nenhum deles sorteia uma resposta — um placeholder que inventa
+preenche o banco com ficção indistinguível do que o modelo real produzirá.
+
 ## Roadmap
 
 Fase 1 casca e navegação ✅ · 2 identidade visual ✅ ·
-**3 Firebase e infraestrutura ✅** · 4 fotografia real · 5 modelo de IA ·
+3 Firebase e infraestrutura ✅ · **4 pipeline de imagem ✅** · 5 modelo de IA ·
 6 confiança e rejeição · 7 catálogo científico e 3D · 8 human-in-the-loop ·
 9 segurança avançada · 10 testes e produção.

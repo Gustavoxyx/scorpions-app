@@ -148,6 +148,23 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
   }
 
   @override
+  Future<void> attachImages(
+    String id, {
+    String? imageUrl,
+    String? thumbnailUrl,
+  }) {
+    return FirebaseErrorMapper.guard(() async {
+      // `update` e não `set`: toca só estes campos. O documento inteiro traria
+      // um `createdAt` novo junto, e a regra de segurança exige que ele não
+      // mude depois da criação.
+      await _collection.doc(id).update(<String, Object?>{
+        'imageUrl': ?imageUrl,
+        'thumbnailUrl': ?thumbnailUrl,
+      });
+    });
+  }
+
+  @override
   Future<void> delete(String id) {
     return FirebaseErrorMapper.guard(() async {
       final String uid = _uid;

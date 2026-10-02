@@ -68,6 +68,22 @@ class _RepoFalso implements IdentificationRepository {
   Future<void> save(IdentificationResult result) async =>
       gravacoes.add(result);
 
+  /// Registra as ligações de imagem como uma gravação a mais, para que os
+  /// testes continuem lendo a história completa em `gravacoes`.
+  @override
+  Future<void> attachImages(
+    String id, {
+    String? imageUrl,
+    String? thumbnailUrl,
+  }) async {
+    final int i = gravacoes.indexWhere((IdentificationResult r) => r.id == id);
+    if (i < 0) return;
+    gravacoes.add(gravacoes[i].copyWith(
+      imageUrl: imageUrl,
+      thumbnailUrl: thumbnailUrl,
+    ));
+  }
+
   @override
   Future<void> delete(String id) async => apagados.add(id);
 

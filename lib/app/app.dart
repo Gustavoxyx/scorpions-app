@@ -45,10 +45,14 @@ class _ScorpionsAppState extends State<ScorpionsApp> {
   final SettingsController _settings = SettingsController();
   late final IdentificationController _identification =
       IdentificationController(
-    // A identificação continua simulada nesta fase (§40). O que mudou é onde
-    // o resultado é gravado, não quem o produz.
+    // O motor simulado só produz desfecho quando o aplicativo roda sem
+    // Firebase. Com banco de verdade, inventar uma espécie gravaria ficção
+    // no histórico de alguém — o registro fica em `processing`, que é o que
+    // de fato aconteceu com a foto.
     service: MockIdentificationService(),
     repository: _deps.identificationRepository,
+    pipeline: _deps.pipeline,
+    demonstration: !_deps.mode.usesFirebase,
   );
   // O histórico observa a sessão: ao trocar de usuário a lista é recarregada,
   // e no logout é esvaziada. Sem isso, o próximo usuário do mesmo aparelho

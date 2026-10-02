@@ -7,6 +7,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_radii.dart';
+import '../../core/theme/app_sizing.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_button.dart';
@@ -69,6 +70,7 @@ class _AnalyzingPageState extends State<AnalyzingPage> {
                   onRetry: () => context.pop(),
                 ),
               IdentificationAnalyzing() => _AnalyzingView(state: state),
+              IdentificationAwaitingModel() => const _AwaitingModelView(),
               // Estado transitório enquanto o pós-frame redireciona.
               _ => const Center(child: CircularProgressIndicator()),
             },
@@ -207,6 +209,60 @@ class _StageProgress extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+/// Desfecho da Fase 4: a fotografia percorreu o pipeline inteiro e **não há
+/// modelo** para analisar (briefing §10 e §31).
+///
+/// # Por que isto não é uma tela de erro
+/// Nada falhou. A imagem foi validada, medida, processada, registrada e
+/// enviada — tudo que esta fase prometeu entregar. O que falta é a Fase 5.
+/// Mostrar "algo deu errado" seria mentir sobre o que aconteceu com a foto da
+/// pessoa, e ela ficaria sem saber se deve tentar de novo.
+class _AwaitingModelView extends StatelessWidget {
+  const _AwaitingModelView();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors c = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(
+            Icons.cloud_done_outlined,
+            size: AppSizing.iconXl,
+            color: c.success,
+          ),
+          AppSpacing.gapXl,
+          Text(
+            'Fotografia registrada',
+            textAlign: TextAlign.center,
+            style: context.text.h2,
+          ),
+          AppSpacing.gapSm,
+          Text(
+            'A imagem foi conferida, preparada e guardada no seu histórico. '
+            'A identificação por modelo entra na próxima fase do projeto — '
+            'até lá, nenhum resultado de espécie é inventado.',
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall,
+          ),
+          AppSpacing.gapXxxl,
+          AppButton(
+            label: 'Voltar ao início',
+            icon: Icons.home_outlined,
+            onPressed: () {
+              context.read<IdentificationController>().reset();
+              context.go(AppRoutes.home);
+            },
+          ),
+        ],
+      ),
     );
   }
 }

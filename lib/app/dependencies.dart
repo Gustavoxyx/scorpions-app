@@ -6,7 +6,11 @@ import '../data/repositories/firestore_species_repository.dart';
 import '../data/repositories/identification_repository.dart';
 import '../data/repositories/mock_auth_repository.dart';
 import '../data/repositories/species_repository.dart';
+import '../data/services/connectivity_service.dart';
+import '../data/services/identification_pipeline.dart';
+import '../data/services/image_processing_service.dart';
 import '../data/services/image_upload_service.dart';
+import '../data/services/permission_service.dart';
 
 /// Raiz de composição: onde as implementações concretas são escolhidas.
 ///
@@ -28,6 +32,8 @@ class AppDependencies {
     required this.speciesRepository,
     required this.identificationRepository,
     required this.imageUploadService,
+    required this.permissionService,
+    required this.pipeline,
     required this.mode,
   });
 
@@ -38,11 +44,25 @@ class AppDependencies {
     if (!mode.usesFirebase) {
       // Modo simulado: nada toca a rede.
       const ImageUploadService uploader = NoopImageUploadService();
+      final AuthRepository auth = MockAuthRepository();
+      final IdentificationRepository identifications =
+          InMemoryIdentificationRepository();
       return AppDependencies._(
-        authRepository: MockAuthRepository(),
+        authRepository: auth,
         speciesRepository: const MockSpeciesRepository(),
-        identificationRepository: InMemoryIdentificationRepository(),
+        identificationRepository: identifications,
         imageUploadService: uploader,
+        permissionService: createPermissionService(),
+        // O pipeline existe também no modo simulado: validar, medir e
+        // processar são Dart puro e não dependem de rede. Só o envio vira
+        // um `noop`. É o que permite exercitar o caminho real sem Firebase.
+        pipeline: IdentificationPipeline(
+          auth: auth,
+          repository: identifications,
+          processing: const DefaultImageProcessingService(),
+          uploader: uploader,
+          connectivity: const AlwaysOnlineConnectivityService(),
+        ),
         mode: mode,
       );
     }
@@ -52,25 +72,45 @@ class AppDependencies {
     // `FirebaseBootstrap`. É o que garante que testar no emulador exercite o
     // mesmo código que roda em produção.
     final ImageUploadService uploader = FirebaseImageUploadService();
+    final AuthRepository auth = FirebaseAuthRepository();
+    final IdentificationRepository identifications =
+        FirestoreIdentificationRepository(uploader: uploader);
 
     return AppDependencies._(
-      authRepository: FirebaseAuthRepository(),
+      authRepository: auth,
       speciesRepository: FirestoreSpeciesRepository(),
-      identificationRepository: FirestoreIdentificationRepository(
-        uploader: uploader,
-      ),
+      identificationRepository: identifications,
       imageUploadService: uploader,
+      permissionService: createPermissionService(),
+      pipeline: IdentificationPipeline(
+        auth: auth,
+        repository: identifications,
+        processing: const DefaultImageProcessingService(),
+        uploader: uploader,
+        connectivity: PlatformConnectivityService(),
+      ),
       mode: mode,
     );
   }
 
   /// Conjunto explicitamente simulado, para testes.
   factory AppDependencies.mock() {
+    final AuthRepository auth = MockAuthRepository();
+    final IdentificationRepository identifications =
+        InMemoryIdentificationRepository();
     return AppDependencies._(
-      authRepository: MockAuthRepository(),
+      authRepository: auth,
       speciesRepository: const MockSpeciesRepository(),
-      identificationRepository: InMemoryIdentificationRepository(),
+      identificationRepository: identifications,
       imageUploadService: const NoopImageUploadService(),
+      permissionService: const NoopPermissionService(),
+      pipeline: IdentificationPipeline(
+        auth: auth,
+        repository: identifications,
+        processing: const DefaultImageProcessingService(),
+        uploader: const NoopImageUploadService(),
+        connectivity: const AlwaysOnlineConnectivityService(),
+      ),
       mode: DataSourceMode.mock,
     );
   }
@@ -79,6 +119,11 @@ class AppDependencies {
   final SpeciesRepository speciesRepository;
   final IdentificationRepository identificationRepository;
   final ImageUploadService imageUploadService;
+  final PermissionService permissionService;
+
+  /// Orquestrador da Fase 4. É por ele que as telas submetem uma fotografia.
+  final IdentificationPipeline pipeline;
+
   final DataSourceMode mode;
 
   /// Rótulo exibido na tela "Sobre", para nunca haver dúvida sobre contra qual

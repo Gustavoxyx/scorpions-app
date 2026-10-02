@@ -146,6 +146,27 @@ service cloud.firestore {
                          'rejected', 'error'];
       }
 
+      // Campos do pipeline de imagem (Fase 4, §10).
+      //
+      // São conferidos aqui porque o cliente os escreve, e um cliente adulterado
+      // escreveria qualquer coisa. `imageQuality` é o caso mais delicado: é um
+      // mapa aberto, e sem limite de tamanho viraria um depósito de dados
+      // arbitrários dentro de um documento que o dono pode escrever à vontade.
+      function isValidPipelineFields() {
+        return (request.resource.data.thumbnailUrl == null
+                || (request.resource.data.thumbnailUrl is string
+                    && request.resource.data.thumbnailUrl.size() <= 512))
+          && (request.resource.data.pipelineVersion == null
+              || (request.resource.data.pipelineVersion is string
+                  && request.resource.data.pipelineVersion.size() <= 64))
+          && (request.resource.data.errorCode == null
+              || (request.resource.data.errorCode is string
+                  && request.resource.data.errorCode.size() <= 64))
+          && (request.resource.data.imageQuality == null
+              || (request.resource.data.imageQuality is map
+                  && request.resource.data.imageQuality.keys().size() <= 12));
+      }
+
       function isValidIdentification() {
         return request.resource.data.userId is string
           && isValidStatus(request.resource.data.status)
@@ -156,6 +177,7 @@ service cloud.firestore {
               || (request.resource.data.confidence is number
                   && request.resource.data.confidence >= 0
                   && request.resource.data.confidence <= 1))
+          && isValidPipelineFields()
           && isValidTimestamp('createdAt');
       }
 
@@ -172,10 +194,14 @@ service cloud.firestore {
 
       // Atualização mantém a posse e não permite transferir o registro para
       // outro usuário.
+      // A atualização é o segundo passo normal do pipeline: o documento nasce
+      // sem imagem e recebe os caminhos quando o envio termina.
       allow update: if ownsExisting()
         && ownsIncoming()
         && request.resource.data.userId == resource.data.userId
-        && isValidStatus(request.resource.data.status);
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidStatus(request.resource.data.status)
+        && isValidPipelineFields();
 
       // O usuário pode apagar o próprio registro (§36 — controle sobre os
       // próprios dados). O arquivo no Storage é removido pelo aplicativo em

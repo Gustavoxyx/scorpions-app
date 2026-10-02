@@ -126,6 +126,10 @@ class IdentificationPipeline {
       'source': image.source.name,
     });
 
+    // Sem arquivo por trás não há o que preparar. Tentar ler os bytes aqui
+    // transformaria o modo de demonstração num erro de leitura.
+    if (!image.isUploadable) return ImagePreparation.simulated();
+
     final Uint8List bytes = await readImageBytes(image);
     AppLog.event(AppEvent.imageProcessingStarted, <String, Object?>{
       'kb': (bytes.length / 1024).round(),
@@ -161,7 +165,7 @@ class IdentificationPipeline {
   }) async {
     assert(preparation.canProceed, 'submit exige uma preparação utilizável');
 
-    final ProcessedImage processada = preparation.image!;
+    final ProcessedImage? processada = preparation.image;
     final String uid = _requireUid();
     final String id = newId();
 
@@ -180,40 +184,46 @@ class IdentificationPipeline {
       id: id,
       image: image,
       userId: uid,
-      imageQuality: preparation.quality!.toMap(),
+      imageQuality: preparation.quality?.toMap(),
     );
     await _repository.save(registro);
     AppLog.event(AppEvent.identificationCreated, <String, Object?>{
-      'quality': preparation.quality!.quality.name,
+      'quality': preparation.quality?.quality.name ?? 'simulada',
     });
 
-    onStage?.call(PipelineStage.uploading);
-    if (_cancelled) return _abortar(uid, id);
+    if (processada != null) {
+      onStage?.call(PipelineStage.uploading);
+      if (_cancelled) return _abortar(uid, id);
 
-    AppLog.event(AppEvent.uploadStarted, <String, Object?>{
-      'kb': (processada.totalBytes / 1024).round(),
-    });
-    final UploadedImagePaths caminhos = await _uploader.uploadAll(
-      image: processada,
-      userId: uid,
-      identificationId: id,
-    );
-    AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
-      'files': caminhos.uploadedCount,
-    });
+      AppLog.event(AppEvent.uploadStarted, <String, Object?>{
+        'kb': (processada.totalBytes / 1024).round(),
+      });
+      final UploadedImagePaths caminhos = await _uploader.uploadAll(
+        image: processada,
+        userId: uid,
+        identificationId: id,
+      );
+      AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
+        'files': caminhos.uploadedCount,
+      });
 
-    if (_cancelled) return _abortar(uid, id);
+      if (_cancelled) return _abortar(uid, id);
 
-    // A referência gravada aponta para a versão de análise, com queda para o
-    // original: é ela que um modelo vai consumir.
-    registro = registro.copyWith(
-      imageUrl: caminhos.forAnalysis,
-      thumbnailUrl: caminhos.thumbnail,
-    );
-    await _repository.save(registro);
+      // A referência gravada aponta para a versão de análise, com queda para
+      // o original: é ela que um modelo vai consumir.
+      registro = registro.copyWith(
+        imageUrl: caminhos.forAnalysis,
+        thumbnailUrl: caminhos.thumbnail,
+      );
+      await _repository.attachImages(
+        id,
+        imageUrl: caminhos.forAnalysis,
+        thumbnailUrl: caminhos.thumbnail,
+      );
+    }
 
     onStage?.call(PipelineStage.awaitingAnalysis);
-    await _prepararAnalise(processada);
+    if (processada != null) await _prepararAnalise(processada);
 
     return PipelineOutcome.completed(registro);
   }

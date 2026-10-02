@@ -89,6 +89,29 @@ alguém a admin é operação de console.
 **Contadores de perfil não existem no banco.** Se o cliente pudesse escrevê-los,
 inflaria as próprias estatísticas. O perfil deriva os números da coleção.
 
+## Campos do pipeline (Fase 4)
+
+`identifications/{id}` ganhou `thumbnailUrl`, `pipelineVersion`, `errorCode` e
+`imageQuality` — um mapa com as medidas da fotografia.
+
+As regras conferem os quatro. `imageQuality` é o caso delicado: é um mapa
+aberto num documento que o próprio dono pode escrever, e sem teto de chaves
+viraria depósito de dado arbitrário. A regra limita a 12 chaves.
+
+`createdAt` passou a ser **imutável** depois da criação. Isso exigiu uma
+operação nova no repositório: o pipeline grava o registro antes do envio e
+depois liga as imagens com `attachImages`, que faz `update` dos dois campos em
+vez de reescrever o documento. Com `set`, o carimbo do servidor seria recriado
+a cada escrita — a data de criação pularia para o momento do upload e a regra
+recusaria a gravação.
+
+> **Pendente de verificação.** As formas de contrato
+> (`test/contract-shapes.json`) são geradas por
+> `flutter test test/contract_shapes_test.dart`, e o `flutter test` está
+> bloqueado nesta máquina pelo Smart App Control. Enquanto isso não for
+> resolvido, as regras acima estão escritas e revisadas, mas **não foram
+> exercitadas contra o que o app realmente grava**.
+
 ## Ir para a nuvem
 
 Nada aqui muda. Do lado do Flutter:

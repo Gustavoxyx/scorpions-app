@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../app/router/app_routes.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_sizing.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
@@ -14,16 +13,40 @@ import '../../core/widgets/feedback_states.dart';
 import '../../core/widgets/reveal.dart';
 import '../../core/widgets/specimen_image.dart';
 import '../../data/models/captured_image.dart';
+import '../../data/models/processed_image.dart';
 import '../../state/identification_controller.dart';
 import 'widgets/frame_guide.dart';
+import 'widgets/photo_quality_notice.dart';
 
 /// Confirmação da foto capturada.
 ///
 /// É um passo curto mas importante do produto: dá ao usuário a chance de
 /// descartar uma foto ruim ANTES de gastar a análise. Na Fase 5 isso poupa
 /// inferências caras; aqui, estabelece o hábito.
-class ConfirmPhotoPage extends StatelessWidget {
+class ConfirmPhotoPage extends StatefulWidget {
   const ConfirmPhotoPage({super.key});
+
+  @override
+  State<ConfirmPhotoPage> createState() => _ConfirmPhotoPageState();
+}
+
+class _ConfirmPhotoPageState extends State<ConfirmPhotoPage> {
+  @override
+  void initState() {
+    super.initState();
+    // A inspeção começa sozinha ao abrir a tela: o usuário já está olhando
+    // para a foto, e esperar que ele toque em algo para só então descobrir que
+    // ela está escura seria desperdiçar justamente o tempo em que ele decide.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _inspecionar());
+  }
+
+  Future<void> _inspecionar() async {
+    if (!mounted) return;
+    final IdentificationController c = context.read<IdentificationController>();
+    final CapturedImage? imagem = c.pendingImage;
+    if (imagem == null || c.preparation != null) return;
+    await c.inspect(imagem);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +54,11 @@ class ConfirmPhotoPage extends StatelessWidget {
     final IdentificationController controller =
         context.watch<IdentificationController>();
     final CapturedImage? image = controller.pendingImage;
+    final ImagePreparation? prep = controller.preparation;
+    final bool inspecionando = controller.state is IdentificationInspecting;
+    final bool podeSeguir = prep?.canProceed ?? false;
+    final bool temRessalva =
+        podeSeguir && (prep!.quality!.warnings.isNotEmpty);
 
     // Salvaguarda: se a página for aberta sem imagem pendente (por exemplo,
     // após um hot-restart), voltamos para a captura em vez de quebrar.
@@ -105,36 +133,29 @@ class ConfirmPhotoPage extends StatelessWidget {
                   padding: const EdgeInsets.all(AppSpacing.screenGutter),
                   child: Column(
                     children: <Widget>[
-                      Container(
-                        padding: AppSpacing.cardCompact,
-                        decoration: BoxDecoration(
-                          color: c.surface,
-                          borderRadius: AppRadii.brSm,
-                          border: Border.all(color: c.border),
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            Icon(Icons.lightbulb_outline_rounded,
-                                size: AppSizing.iconMd, color: c.secondary),
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(
-                              child: Text(
-                                AppStrings.confirmBody,
-                                style: context.text.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      PhotoQualityNotice(preparation: prep),
                       AppSpacing.gapLg,
                       AppButton(
-                        label: AppStrings.usePhoto,
+                        // O rótulo muda quando há ressalva: "usar mesmo assim"
+                        // diz que a pessoa está escolhendo seguir apesar do
+                        // aviso, o que é exatamente o que o §6 pede.
+                        label: temRessalva
+                            ? AppStrings.usePhotoAnyway
+                            : AppStrings.usePhoto,
                         icon: Icons.check_rounded,
-                        glow: true,
-                        onPressed: () {
-                          controller.analyze(image);
-                          context.pushReplacement(AppRoutes.analyzing);
-                        },
+                        // O halo é da ação recomendada. Com foto ruim ela deixa
+                        // de ser recomendada, então o destaque sai.
+                        glow: podeSeguir && !temRessalva,
+                        loading: inspecionando,
+                        variant: temRessalva
+                            ? AppButtonVariant.secondary
+                            : AppButtonVariant.primary,
+                        onPressed: podeSeguir
+                            ? () {
+                                controller.submit(image);
+                                context.pushReplacement(AppRoutes.analyzing);
+                              }
+                            : null,
                       ),
                       AppSpacing.gapSm,
                       AppButton(

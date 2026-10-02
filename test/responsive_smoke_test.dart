@@ -28,7 +28,11 @@ import 'package:scorpions/state/history_controller.dart';
 import 'package:scorpions/state/identification_controller.dart';
 import 'package:scorpions/state/onboarding_controller.dart';
 import 'package:scorpions/state/settings_controller.dart';
+import 'package:scorpions/data/services/connectivity_service.dart';
+import 'package:scorpions/data/services/identification_pipeline.dart';
 import 'package:scorpions/data/services/identification_service.dart';
+import 'package:scorpions/data/services/image_processing_service.dart';
+import 'package:scorpions/data/services/image_upload_service.dart';
 
 /// Verificação de responsividade e integridade de layout.
 ///
@@ -54,11 +58,12 @@ void main() {
   Widget harness(Widget screen, {required Brightness brightness}) {
     final IdentificationRepository identifications =
         InMemoryIdentificationRepository();
+    final MockAuthRepository auth = MockAuthRepository();
 
     return MultiProvider(
       providers: <SingleChildWidget>[
         ChangeNotifierProvider<AuthController>(
-          create: (_) => AuthController(MockAuthRepository()),
+          create: (_) => AuthController(auth),
         ),
         ChangeNotifierProvider<OnboardingController>(
           create: (_) => OnboardingController(),
@@ -70,6 +75,14 @@ void main() {
           create: (_) => IdentificationController(
             service: MockIdentificationService(),
             repository: identifications,
+            pipeline: IdentificationPipeline(
+              auth: auth,
+              repository: identifications,
+              processing: const DefaultImageProcessingService(),
+              uploader: const NoopImageUploadService(),
+              connectivity: const AlwaysOnlineConnectivityService(),
+            ),
+            demonstration: true,
           ),
         ),
         ChangeNotifierProvider<HistoryController>(

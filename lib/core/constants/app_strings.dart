@@ -95,6 +95,10 @@ abstract final class AppStrings {
   static const String confirmBody =
       'A imagem está nítida e mostra o corpo inteiro do animal?';
   static const String usePhoto = 'Usar esta foto';
+
+  /// Usado quando a foto passou com ressalva: deixa claro que a pessoa
+  /// está escolhendo seguir apesar do aviso.
+  static const String usePhotoAnyway = 'Usar mesmo assim';
   static const String retakePhoto = 'Tirar outra';
 
   // -- Análise ---------------------------------------------------------------

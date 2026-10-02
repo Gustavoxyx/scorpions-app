@@ -74,6 +74,24 @@ class ImagePreparation {
     this.image,
   });
 
+  /// Imagem de demonstração: não existe arquivo por trás dela.
+  ///
+  /// Acontece em desktop, no navegador sem câmera e em teste, onde
+  /// `SimulatedCameraService` devolve uma foto sem bytes para que o fluxo
+  /// continue navegável. Não há o que validar, medir ou processar — e dizer
+  /// isso explicitamente é melhor que deixar a leitura de bytes falhar e virar
+  /// uma tela de erro para algo que não é erro nenhum.
+  factory ImagePreparation.simulated() {
+    return ImagePreparation(
+      validation: ImageValidationResult.valid(
+        format: ImageFormat.jpeg,
+        width: 0,
+        height: 0,
+        byteCount: 0,
+      ),
+    );
+  }
+
   /// Recusa na porta: nem qualidade nem processamento chegaram a acontecer.
   factory ImagePreparation.rejected(ImageValidationResult validation) {
     assert(!validation.isValid, 'Recusa exige uma validação que falhou.');
@@ -90,7 +108,13 @@ class ImagePreparation {
 
   bool get isValid => validation.isValid;
 
-  /// Se o pipeline pode seguir. Qualidade `invalid` interrompe; `poor` não —
-  /// essa é decisão do usuário (§6).
-  bool get canProceed => isValid && (quality?.isUsable ?? false);
+  /// Imagem de demonstração, sem arquivo por trás.
+  bool get isSimulated => isValid && image == null;
+
+  /// Se o pipeline pode seguir.
+  ///
+  /// Qualidade `invalid` interrompe; `poor` não — essa é decisão do usuário
+  /// (§6). Uma imagem simulada segue porque não há o que medir nela.
+  bool get canProceed =>
+      isValid && (isSimulated || (quality?.isUsable ?? false));
 }
