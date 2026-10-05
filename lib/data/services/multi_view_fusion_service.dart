@@ -197,8 +197,16 @@ class LateFusionService implements MultiViewFusionService {
               confidence: e.value,
             ))
         .toList()
-      ..sort((SpeciesCandidate a, SpeciesCandidate b) =>
-          b.confidence.compareTo(a.confidence));
+      // Desempate por identificador, e não é detalhe: com dois scores iguais,
+      // a ordem passaria a depender da ordem de iteração de um `Set`. Isso
+      // tornaria a saída dependente da ordem em que as espécies apareceram
+      // nas listas de entrada — uma variável escondida, e uma fonte de
+      // divergência com a implementação do servidor, que precisa produzir
+      // exatamente o mesmo resultado.
+      ..sort((SpeciesCandidate a, SpeciesCandidate b) {
+        final int porScore = b.confidence.compareTo(a.confidence);
+        return porScore != 0 ? porScore : a.speciesId.compareTo(b.speciesId);
+      });
 
     return FusedPrediction(
       // Guardado antes da reescala. Ver a justificativa em `rawTopScore`.

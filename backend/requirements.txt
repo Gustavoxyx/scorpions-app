@@ -1,0 +1,12 @@
+# Versões fixadas de propósito: uma publicação de dependência não pode mudar o
+# comportamento do serviço sem ninguém ter tocado no projeto. Atualizar é uma
+# decisão escrita aqui, com os testes rodando depois.
+#
+# Conferidas no PyPI em 2026-10-05, não estimadas.
+
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+firebase-admin==7.7.0
+google-cloud-firestore==2.34.0
+Pillow==12.3.0
