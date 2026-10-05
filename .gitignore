@@ -31,6 +31,12 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+
+# O Gradle também escreve aqui. `android/build.gradle.kts` redireciona a saída
+# principal para `/build/`, mas os relatórios de problemas do Gradle 9 continuam
+# caindo em `android/build/reports/` — artefato de build, nunca versionado.
+/android/build/
+/android/.gradle/
 /coverage/
 
 # Symbolication related
