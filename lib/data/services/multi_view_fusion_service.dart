@@ -61,6 +61,7 @@ enum FusionStrategy {
 class FusedPrediction {
   const FusedPrediction({
     required this.candidates,
+    required this.rawTopScore,
     required this.strategy,
     required this.consistency,
     required this.viewCount,
@@ -70,10 +71,31 @@ class FusedPrediction {
   /// Nada a fundir — nenhuma vista produziu predição.
   const FusedPrediction.notEvaluated()
       : candidates = const <SpeciesCandidate>[],
+        rawTopScore = 0,
         strategy = FusionStrategy.average,
         consistency = const CrossViewConsistency.singleView(),
         viewCount = 0,
         modelVersions = const <String>[];
+
+  /// Pontuação do vencedor **antes** da renormalização.
+  ///
+  /// # Por que este campo existe
+  /// Porque renormalizar apaga a informação mais importante que o modelo tem a
+  /// dar: a de que ele não está convencido de nada.
+  ///
+  /// Um caso medido: duas vistas devolvendo `{x: 0,30, y: 0,28}` e
+  /// `{y: 0,31, x: 0,29}`. A média dá 0,295 para cada — probabilidade
+  /// espalhada, nenhuma hipótese sustentada, exatamente o `UNKNOWN_SPECIES`
+  /// do §17. Mas a soma dos candidatos listados é 0,59, e reescalar para 1
+  /// transforma os 0,295 em **0,50**. O mesmo modelo indeciso passa a
+  /// aparentar meia certeza, e o limiar de rejeição nunca dispara.
+  ///
+  /// Então as duas coisas são separadas: [candidates] vem renormalizado,
+  /// porque é o que a tela mostra e precisa somar 1; [rawTopScore] fica cru,
+  /// porque é o que a decisão de rejeitar precisa olhar.
+  ///
+  /// Um teste pegou isto antes de existir qualquer modelo.
+  final double rawTopScore;
 
   final List<SpeciesCandidate> candidates;
   final FusionStrategy strategy;
@@ -104,6 +126,7 @@ class FusedPrediction {
         'viewCount': viewCount,
         'modelVersions': modelVersions,
         'margin': double.parse(margin.toStringAsFixed(4)),
+        'rawTopScore': double.parse(rawTopScore.toStringAsFixed(4)),
         'consistency': consistency.toMap(),
         'candidates': topThree
             .map((SpeciesCandidate c) => c.toMap())
@@ -178,6 +201,8 @@ class LateFusionService implements MultiViewFusionService {
           b.confidence.compareTo(a.confidence));
 
     return FusedPrediction(
+      // Guardado antes da reescala. Ver a justificativa em `rawTopScore`.
+      rawTopScore: ordenados.isEmpty ? 0 : ordenados.first.confidence,
       candidates: _renormalizar(ordenados),
       strategy: strategy,
       consistency: acordo,

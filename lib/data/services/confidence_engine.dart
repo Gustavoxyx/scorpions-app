@@ -186,7 +186,13 @@ class ConfidenceEngine {
     // -- Rejeição ------------------------------------------------------------
     // Vem primeiro porque é a única conclusão que não depende de mais nada:
     // se nenhuma hipótese alcança o piso, não há o que ponderar.
-    if (score < DecisionThresholds.rejectBelow) {
+    //
+    // Olha o score CRU, não o renormalizado, e a diferença não é detalhe.
+    // Reescalar os candidatos para somarem 1 infla um modelo indeciso: um
+    // par de hipóteses em 0,295 vira 0,50 cada, e o limiar de rejeição
+    // deixaria de disparar justamente no caso em que mais precisa — aquele
+    // em que o modelo espalhou a probabilidade e não sustentou nada.
+    if (prediction.rawTopScore < DecisionThresholds.rejectBelow) {
       return _montar(
         DecisionLevel.reject,
         <DecisionReason>[DecisionReason.scoreBelowRejection],

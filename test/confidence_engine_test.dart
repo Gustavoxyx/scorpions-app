@@ -72,6 +72,35 @@ void main() {
 
       expect(a.level, DecisionLevel.reject);
     });
+
+    // REGRESSÃO — este caso já quebrou uma vez, antes de existir modelo.
+    //
+    // A fusão renormaliza os candidatos para somarem 1, porque é isso que a
+    // tela precisa mostrar. Só que a soma dos scores listados é menor que 1,
+    // e reescalar INFLA: duas hipóteses em 0,295 viram 0,50 cada. Um modelo
+    // que não sustentou nada passava a aparentar meia certeza, e o limiar de
+    // rejeição nunca disparava — exatamente no caso em que ele mais importa.
+    //
+    // A correção foi separar as duas coisas: os candidatos saem
+    // renormalizados, e `rawTopScore` guarda o valor cru para a decisão.
+    test('probabilidade espalhada é rejeitada, mesmo depois da renormalização',
+        () {
+      final List<ViewPrediction> ps = <ViewPrediction>[
+        vista(CaptureType.topView, <String, double>{'x': 0.30, 'y': 0.28}),
+        vista(CaptureType.tail, <String, double>{'y': 0.31, 'x': 0.29}),
+      ];
+      final FusedPrediction f = fusao.fuse(ps, strategy: FusionStrategy.average);
+
+      expect(f.rawTopScore, closeTo(0.295, 1e-9),
+          reason: 'o que o modelo realmente devolveu');
+      expect(f.top!.confidence, closeTo(0.5, 1e-9),
+          reason: 'o que a tela mostra, depois de somar 1');
+      expect(f.rawTopScore, lessThan(DecisionThresholds.rejectBelow));
+
+      expect(motor.assess(f).level, DecisionLevel.reject,
+          reason: 'a decisão precisa olhar o valor cru; olhar o reescalado '
+              'afirmaria uma espécie que o modelo não sustentou');
+    });
   });
 
   group('revisão humana (§14, §18)', () {
