@@ -62,6 +62,14 @@ class Caller:
     email_verified: bool
     role: Role
 
+    #: Quando esta sessão foi autenticada, em segundos desde a época.
+    #:
+    #: Vem da claim `auth_time` do ID token, que o Firebase preenche com o
+    #: momento do login — **não** com o momento em que o token foi renovado.
+    #: É o que permite exigir reautenticação sem inventar um mecanismo de
+    #: sessão próprio. Ver `requires_recent_auth`.
+    auth_time: int = 0
+
     def requires(self, *permitidos: Role) -> None:
         """Interrompe se o papel não estiver entre os permitidos.
 
@@ -73,6 +81,62 @@ class Caller:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operação não disponível para esta conta.",
+            )
+
+    def requires_verified_email(self) -> None:
+        """Interrompe se o e-mail não foi verificado.
+
+        Usado nas operações que dependem de o endereço pertencer de fato a
+        quem o cadastrou — recuperar a conta, receber o aviso de exclusão. Sem
+        isso, alguém cadastra `vitima@exemplo.com`, e a vítima perde o
+        endereço para uma conta que não é dela (MEDIUM-3 da auditoria).
+        """
+        if not self.email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Confirme seu e-mail antes de continuar. "
+                    "Enviamos um link quando você criou a conta."
+                ),
+            )
+
+    def requires_recent_auth(self, max_age_seconds: int = 300) -> None:
+        """Interrompe se o login não é recente.
+
+        # O problema (MEDIUM-5 da auditoria)
+        Um ID token do Firebase é renovado automaticamente a cada hora, sem
+        pedir senha. Quem rouba o aparelho destravado, ou um token, continua
+        autenticado indefinidamente. Para ler o próprio histórico isso é
+        aceitável; para **apagar a conta**, não — é a operação irreversível por
+        definição.
+
+        # Por que `auth_time` resolve sem inventar nada
+        A claim `auth_time` marca quando a **senha foi apresentada**, e não
+        quando o token foi renovado. Ela não se move numa renovação silenciosa.
+        Então exigir `auth_time` recente é exigir que a pessoa tenha digitado a
+        senha agora — que é a definição de reautenticação.
+
+        O cliente obtém isso chamando `reauthenticateWithCredential` e pedindo
+        um token novo. Nenhum mecanismo de sessão próprio, nenhuma tabela de
+        desafios, nada para manter.
+
+        # Por que 5 minutos
+        Tempo de ler o aviso, digitar a senha e confirmar, com folga para uma
+        rede ruim. Mais que isso e a janela deixa de significar "agora".
+        """
+        import time
+
+        idade = int(time.time()) - self.auth_time
+        if self.auth_time <= 0 or idade > max_age_seconds:
+            # 401 e não 403: o cliente **pode** fazer algo a respeito, que é
+            # reautenticar. 403 diria "desista".
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Confirme sua senha para continuar. "
+                    "Esta operação não pode ser desfeita."
+                ),
+                headers={"X-Reauth-Required": "true"},
             )
 
 
@@ -121,7 +185,7 @@ async def current_caller(
     o custo é aceito: é o mesmo lugar que as Security Rules consultam, então
     servidor e regras nunca discordam sobre quem é admin.
     """
-    from google.cloud import firestore  # import tardio: acelera o start
+    from .clients import firestore_client
 
     token = _extract_bearer(authorization)
     app = firebase_app(settings)
@@ -151,11 +215,7 @@ async def current_caller(
 
     uid = decodificado["uid"]
 
-    cliente = firestore.Client(
-        project=settings.project_id,
-        credentials=_google_credentials(settings),
-    )
-    perfil = cliente.collection("users").document(uid).get()
+    perfil = firestore_client(settings).collection("users").document(uid).get()
     dados = perfil.to_dict() if perfil.exists else {}
 
     return Caller(
@@ -163,17 +223,7 @@ async def current_caller(
         email=decodificado.get("email"),
         email_verified=bool(decodificado.get("email_verified", False)),
         role=Role.parse(dados.get("role")),
-    )
-
-
-def _google_credentials(settings: Settings):
-    """Credencial para os clientes do Google Cloud.
-
-    Separada do `firebase_admin` porque `google-cloud-firestore` espera o tipo
-    da biblioteca de autenticação do Google, e não o do Firebase.
-    """
-    from google.oauth2 import service_account
-
-    return service_account.Credentials.from_service_account_info(
-        settings.service_account
+        # `auth_time` pode faltar num token forjado ou muito antigo. Zero faz
+        # `requires_recent_auth` recusar — falhar fechado.
+        auth_time=int(decodificado.get("auth_time", 0) or 0),
     )

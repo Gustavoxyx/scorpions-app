@@ -82,3 +82,35 @@ class AnalysisResponse(BaseModel):
     sessionId: str
     status: str
     requestId: str
+
+
+class QuotaResponse(BaseModel):
+    """Consumo da cota de hoje.
+
+    Serve para a tela avisar antes de o usuário tirar as fotos. Não é
+    autorização: quem decide é `quota.consume`, dentro de uma transação.
+    """
+
+    used: int
+    limit: int
+    remaining: int
+
+
+class DeletionResponse(BaseModel):
+    """O recibo da exclusão de conta.
+
+    # Por que devolve contagens
+    Porque o titular acabou de pedir que algo irreversível acontecesse, e merece
+    a confirmação de que aconteceu — "3 imagens e 2 análises apagadas" é
+    verificável; "pronto" não é.
+
+    # O que ele NÃO devolve
+    Nenhum caminho de arquivo, nenhuma URL, nenhum identificador de documento.
+    São contagens, e só. Dado pessoal numa resposta de exclusão seria o oposto
+    do que a operação acabou de fazer.
+    """
+
+    deleted: bool
+    images: int
+    identifications: int
+    requestId: str

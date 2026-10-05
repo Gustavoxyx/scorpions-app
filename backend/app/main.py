@@ -33,10 +33,18 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import account, quota
+from .audit import AuditAction, AuditOutcome, record
 from .auth import Caller, Role, current_caller, firebase_app
 from .config import ConfigError, Settings, get_settings
 from .fusion import CALIBRATED
-from .schemas import AnalysisRequest, AnalysisResponse, HealthResponse
+from .schemas import (
+    AnalysisRequest,
+    AnalysisResponse,
+    DeletionResponse,
+    HealthResponse,
+    QuotaResponse,
+)
 
 log = logging.getLogger("scorpions")
 
@@ -163,12 +171,33 @@ async def create_analysis(
     # pessoa não encontra nada, porque o prefixo é montado a partir do uid
     # verificado — não do que veio no corpo. É o IDOR fechado por construção.
     prefixo = f"users/{caller.uid}/identifications/{payload.sessionId}"
+    del prefixo  # usado quando o modelo existir; aqui só documenta a construção
+
+    # A cota é cobrada ANTES de qualquer trabalho (MEDIUM-4).
+    #
+    # Antes de propósito: cobrar depois significaria que uma análise abandonada
+    # no meio sai de graça, e provocar abandono é barato. O §17 chama isso de
+    # proteger o orçamento, e enquanto não houver modelo isto já protege a cota
+    # do Firestore e do Storage.
+    try:
+        estado = quota.consume(settings, caller.uid)
+    except HTTPException as erro:
+        if erro.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            record(
+                settings,
+                action=AuditAction.QUOTA_EXCEEDED,
+                actor_uid=caller.uid,
+                outcome=AuditOutcome.DENIED,
+                request_id=rid,
+            )
+        raise
 
     log.info(
         "análise solicitada",
         extra={
             "request_id": rid,
             "views": len(payload.views),
+            "quota_remaining": estado.remaining,
             # Sem uid, sem e-mail, sem caminho — §18.
         },
     )
@@ -186,9 +215,76 @@ async def create_analysis(
     )
 
 
+@app.get("/v1/me/quota", response_model=QuotaResponse)
+async def read_quota(
+    caller: Caller = Depends(current_caller),
+    settings: Settings = Depends(get_settings),
+) -> QuotaResponse:
+    """Quanto da cota de hoje já foi usado.
+
+    Para a tela avisar antes de o usuário tirar as fotos. **Não** é o que
+    autoriza — entre esta leitura e o uso o número pode mudar, e quem
+    decide é `quota.consume`, dentro de uma transação."""
+    estado = quota.peek(settings, caller.uid)
+    return QuotaResponse(
+        used=estado.used, limit=estado.limit, remaining=estado.remaining
+    )
+
+
+@app.get("/v1/me/data")
+async def export_my_data(
+    request: Request,
+    caller: Caller = Depends(current_caller),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Exporta os dados do titular (LGPD, Art. 18, V — portabilidade).
+
+    Sem exigir reautenticação: é uma leitura do que o próprio usuário já vê
+    no aplicativo, e o token verificado basta. Pedir senha para ler o que a
+    tela mostra seria atrito sem ganho."""
+    rid = getattr(request.state, "request_id", "?")
+    return account.export_data(settings, caller, rid)
+
+
+@app.delete("/v1/me", response_model=DeletionResponse)
+async def delete_my_account(
+    request: Request,
+    caller: Caller = Depends(current_caller),
+    settings: Settings = Depends(get_settings),
+) -> DeletionResponse:
+    """Apaga a conta e tudo que pertence a ela (LGPD, Art. 18, VI).
+
+    Era o HIGH-2 da auditoria: o titular não tinha **nenhum** caminho para
+    apagar os próprios dados.
+
+    # Por que exige senha recente
+    É a operação irreversível por definição. Um aparelho destravado
+    esquecido numa mesa, ou um token roubado, não podem bastar — e o ID
+    token do Firebase se renova sozinho a cada hora, sem pedir senha.
+    `requires_recent_auth` olha a claim `auth_time`, que só se move quando
+    a senha é apresentada de fato (MEDIUM-5).
+
+    O cliente responde a isto chamando `reauthenticateWithCredential` e
+    pedindo um token novo; o cabeçalho `X-Reauth-Required` na recusa é o
+    sinal."""
+    rid = getattr(request.state, "request_id", "?")
+    caller.requires_recent_auth()
+
+    relatorio = account.delete_account(settings, caller, rid)
+
+    return DeletionResponse(
+        deleted=True,
+        images=relatorio.images,
+        identifications=relatorio.identifications,
+        requestId=rid,
+    )
+
+
 @app.get("/v1/review-queue")
 async def review_queue(
+    request: Request,
     caller: Caller = Depends(current_caller),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     """Fila de revisão (§19). Só para quem revisa.
 
@@ -197,4 +293,18 @@ async def review_queue(
     continuaria respondendo a quem soubesse o caminho.
     """
     caller.requires(Role.SPECIALIST, Role.REVIEWER, Role.ADMIN)
+
+    # Acesso privilegiado a dado de outras pessoas gera registro (FASE 24).
+    #
+    # Hoje a fila está vazia, então não há o que ver — mas o registro começa a
+    # existir junto do endpoint, não depois. O modelo de ameaças marca em T-4
+    # que uma conta privilegiada comprometida leria dados de usuários sem deixar
+    # rastro; é esta linha que fecha isso, antes de haver o que ler.
+    record(
+        settings,
+        action=AuditAction.REVIEW_QUEUE_ACCESSED,
+        actor_uid=caller.uid,
+        outcome=AuditOutcome.SUCCESS,
+        request_id=getattr(request.state, "request_id", "?"),
+    )
     return {"items": [], "pending": 0}
