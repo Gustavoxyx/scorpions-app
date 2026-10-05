@@ -62,8 +62,15 @@ void main() {
       '_comment': 'Gerado por test/contract_shapes_test.dart. Não editar à mão.',
       'userCreate': _encode(user.toCreateMap()),
       'userUpdate': _encode(user.toUpdateMap()),
-      'identificationIdentified': _encode(identified.toMap()),
-      'identificationRejected': _encode(rejected.toMap()),
+      // O que o aplicativo REALMENTE envia numa criação. É esta forma que
+      // precisa ser aceita pelas regras.
+      'identificationClientCreate': _encode(identified.toClientCreateMap()),
+
+      // O documento completo, com os campos que só o servidor escreve.
+      // Exportado de propósito para o lado oposto do teste: as regras
+      // precisam RECUSAR esta forma quando ela vem do cliente (HIGH-1).
+      'identificationServerFull': _encode(identified.toMap()),
+      'identificationRejectedServerFull': _encode(rejected.toMap()),
       'species': _encode(species.toMap()),
     };
 
@@ -88,12 +95,35 @@ void main() {
     expect(userCreate['uid'], 'uid-alice');
     expect(userCreate['createdAt'], '__SERVER_TIMESTAMP__');
 
-    final Map<String, Object?> identMap =
-        shapes['identificationIdentified']! as Map<String, Object?>;
-    expect(identMap['userId'], 'uid-alice');
-    expect(identMap['status'], 'identified');
-    expect(identMap['modelVersion'], 'mock-v1');
-    expect(identMap['confidence'], closeTo(0.94, 0.0001));
+    // A forma do cliente: o que o aplicativo realmente envia numa criação.
+    final Map<String, Object?> clienteMap =
+        shapes['identificationClientCreate']! as Map<String, Object?>;
+    expect(clienteMap['userId'], 'uid-alice');
+    expect(clienteMap['status'], 'processing',
+        reason: 'a criação nasce sempre em processing; os outros estados são '
+            'conclusões de uma análise que não acontece no aplicativo');
+
+    // E o que ela NÃO pode conter. Esta verificação é o HIGH-1 travado na
+    // origem: se alguém devolver um desses campos ao mapa do cliente, o teste
+    // cai aqui, antes mesmo de as regras serem consultadas.
+    for (final String proibido in <String>[
+      'confidence',
+      'speciesId',
+      'scientificName',
+      'modelVersion',
+      'species',
+      'alternatives',
+      'rejectionReason',
+    ]) {
+      expect(clienteMap.containsKey(proibido), isFalse,
+          reason: '"$proibido" nasce no servidor — ver SECURITY_AUDIT HIGH-1');
+    }
+
+    // A forma completa continua existindo, para o servidor e para auditoria.
+    final Map<String, Object?> servidorMap =
+        shapes['identificationServerFull']! as Map<String, Object?>;
+    expect(servidorMap['confidence'], closeTo(0.94, 0.0001));
+    expect(servidorMap['modelVersion'], 'mock-v1');
   });
 }
 

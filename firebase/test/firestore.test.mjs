@@ -215,15 +215,21 @@ describe('species', () => {
 // identifications/{id}
 // =============================================================================
 describe('identifications', () => {
+  // O que o CLIENTE tem direito de gravar.
+  //
+  // Repare no que não está aqui: `confidence`, `speciesId`, `scientificName`,
+  // `modelVersion`. Eles saíram deste documento quando a auditoria (HIGH-1)
+  // mostrou que a regra validava o FORMATO de `confidence` e deixava passar
+  // qualquer valor entre 0 e 1 — um `0.99` forjado passava igual a um
+  // produzido por modelo.
+  //
+  // Esta forma espelha `IdentificationResult.toClientCreateMap()` no Dart, e
+  // o teste de contrato confere que as duas continuam iguais.
   const validDoc = (userId) => ({
     userId,
     imageUrl: null,
-    status: 'identified',
-    modelVersion: 'mock-v1',
-    isMock: true,
-    confidence: 0.9,
-    speciesId: 'tityus-serrulatus',
-    scientificName: 'Tityus serrulatus',
+    status: 'processing',
+    pipelineVersion: 'pipeline-v1',
     createdAt: serverTimestamp(),
   });
 
@@ -251,12 +257,82 @@ describe('identifications', () => {
     );
   });
 
-  it('NÃO cria com confiança fora de 0..1', async () => {
+  // ---------------------------------------------------------------------------
+  // HIGH-1 da auditoria: o cliente não escreve resultado de análise.
+  // ---------------------------------------------------------------------------
+  // Cada um destes casos é a mesma tentativa por um campo diferente. Um
+  // registro forjado contamina as métricas de acurácia, entra na fila de
+  // revisão humana como se fosse saída do modelo, e alimenta o dataset de
+  // retreinamento com rótulo falso.
+
+  it('NÃO cria com confiança — nem um valor válido', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'nova-4'), {
+      setDoc(doc(db, 'identifications', 'forja-1'), {
         ...validDoc(ALICE),
-        confidence: 42,
+        confidence: 0.99,
+      }),
+    );
+  });
+
+  it('NÃO cria com espécie', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'forja-2'), {
+        ...validDoc(ALICE),
+        speciesId: 'tityus-serrulatus',
+      }),
+    );
+  });
+
+  it('NÃO cria com versão de modelo', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'forja-3'), {
+        ...validDoc(ALICE),
+        modelVersion: 'scorpion-v9.9',
+      }),
+    );
+  });
+
+  it('NÃO cria já identificada — status é conclusão de análise', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'forja-4'), {
+        ...validDoc(ALICE),
+        status: 'identified',
+      }),
+    );
+  });
+
+  it('NÃO cria com revisão humana forjada', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'forja-5'), {
+        ...validDoc(ALICE),
+        reviewedBy: 'especialista-inventado',
+      }),
+    );
+  });
+
+  it('NÃO acrescenta confiança a um documento que já existe', async () => {
+    // O caminho mais sutil: criar limpo e reescrever depois. `changedFields()`
+    // fecha isso — ele lista o que a escrita está MUDANDO.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'identifications', 'id-alice-1'), {
+        confidence: 0.99,
+        speciesId: 'tityus-serrulatus',
+      }),
+    );
+  });
+
+  it('ainda anexa os caminhos das imagens, que são do cliente', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'identifications', 'id-alice-1'), {
+        imageUrl: 'users/uid-alice/identifications/id-alice-1/processed.jpg',
+        thumbnailUrl: 'users/uid-alice/identifications/id-alice-1/thumbnail.jpg',
       }),
     );
   });

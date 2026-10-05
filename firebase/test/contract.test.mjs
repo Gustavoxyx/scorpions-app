@@ -88,17 +88,36 @@ describe('contrato: formas geradas pelo aplicativo', () => {
     await assertSucceeds(
       setDoc(
         doc(db, 'identifications', 'ident-1'),
-        hydrate(shapes.identificationIdentified),
+        hydrate(shapes.identificationClientCreate),
       ),
     );
   });
 
-  it('a rejeição que o app grava é aceita', async () => {
+  // O LADO OPOSTO, e é o que dá sentido ao de cima.
+  //
+  // `identificationServerFull` é o documento completo que o modelo
+  // `IdentificationResult` sabe serializar — com `confidence`, `speciesId` e
+  // `modelVersion`. As regras precisam RECUSAR essa forma quando ela chega do
+  // cliente, porque esses campos nascem no servidor (auditoria HIGH-1).
+  //
+  // Esta é a forma REAL, gerada pelo mesmo modelo de produção. Se alguém
+  // reabrir a brecha afrouxando a regra, este teste cai.
+  it('o documento completo, com resultado de análise, é RECUSADO do cliente', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(
-        doc(db, 'identifications', 'ident-2'),
-        hydrate(shapes.identificationRejected),
+        doc(db, 'identifications', 'ident-forjado'),
+        hydrate(shapes.identificationServerFull),
+      ),
+    );
+  });
+
+  it('a rejeição completa também é recusada do cliente', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'identifications', 'ident-forjado-2'),
+        hydrate(shapes.identificationRejectedServerFull),
       ),
     );
   });
@@ -115,7 +134,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
       setDoc(doc(db, 'identifications', 'ident-3'), {
-        ...hydrate(shapes.identificationIdentified),
+        ...hydrate(shapes.identificationClientCreate),
         userId: BOB,
       }),
     );

@@ -105,7 +105,10 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
 
       await _collection
           .doc(result.id)
-          .set(FirestoreWriteMapper.prepare(owned.toMap()));
+          // `toClientCreateMap` e não `toMap`: o cliente não grava resultado
+          // de análise. Ver a justificativa no modelo e o achado HIGH-1 da
+          // auditoria.
+          .set(FirestoreWriteMapper.prepare(owned.toClientCreateMap()));
     });
   }
 

@@ -282,6 +282,47 @@ class IdentificationResult {
   ///
   /// `userId` é gravado e é o que as Security Rules conferem contra
   /// `request.auth.uid`. Sem ele, não há como um documento pertencer a alguém.
+  /// O que o **cliente** tem direito de gravar.
+  ///
+  /// # Por que existe separado de [toMap]
+  /// A auditoria de segurança (HIGH-1) encontrou que o aplicativo escrevia
+  /// `confidence` e `modelVersion` direto no Firestore, e que a regra
+  /// validava o formato, não a origem — um `0.99` forjado passava igual a um
+  /// produzido por modelo.
+  ///
+  /// Sem IA o estrago era pequeno: o usuário poluía o próprio histórico. Com
+  /// IA, um registro forjado contaminaria as métricas de acurácia, entraria
+  /// na fila de revisão humana como se fosse saída do modelo, alimentaria o
+  /// dataset de retreinamento com rótulo falso, e destruiria a auditabilidade
+  /// do §39 — não haveria como distinguir o que o modelo disse do que o
+  /// usuário digitou.
+  ///
+  /// # O que ficou de fora, e não é esquecimento
+  /// `speciesId`, `scientificName`, `confidence`, `species`, `alternatives`,
+  /// `rejectionReason` e `modelVersion`. Todos nascem no servidor agora.
+  ///
+  /// A Security Rules recusa quem tentar escrevê-los mesmo assim — **ela** é
+  /// a proteção, não este método. Mas o que o cliente não consegue nomear,
+  /// ele não consegue forjar por distração, e as duas camadas dizendo a mesma
+  /// coisa é o que o briefing chama de defesa em profundidade.
+  Map<String, Object?> toClientCreateMap() => <String, Object?>{
+        'userId': userId,
+        'imageUrl': imageUrl,
+        'thumbnailUrl': thumbnailUrl,
+        // Só este estado. Os outros são conclusões da análise, e a análise
+        // não acontece aqui.
+        'status': IdentificationStatus.processing.id,
+        'pipelineVersion': pipelineVersion,
+        'imageQuality': imageQuality,
+        'errorCode': errorCode,
+        'createdAt': FirestoreCodec.serverTimestamp,
+      };
+
+  /// Documento completo, incluindo o que só o servidor grava.
+  ///
+  /// Usado para ler, para auditar e pelo backend de inferência. **Não** é o
+  /// que o aplicativo envia numa criação — para isso existe
+  /// [toClientCreateMap].
   Map<String, Object?> toMap() => <String, Object?>{
         'userId': userId,
         'imageUrl': imageUrl,

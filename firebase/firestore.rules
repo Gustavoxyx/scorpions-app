@@ -175,16 +175,38 @@ service cloud.firestore {
               || (qualidade is map && qualidade.keys().size() <= 12));
       }
 
+      // Campos que SÓ O SERVIDOR escreve (auditoria HIGH-1).
+      //
+      // Até aqui, a regra validava o FORMATO de `confidence` — entre 0 e 1 —
+      // e deixava passar qualquer valor nesse intervalo. Formato não é
+      // origem: um `0.99` forjado por um cliente adulterado passava
+      // exatamente como um produzido por um modelo.
+      //
+      // Sem IA, o estrago era pequeno: o usuário poluía o próprio histórico.
+      // Com IA, um registro forjado contamina as métricas de acurácia, entra
+      // na fila de revisão humana como se fosse saída do modelo, alimenta o
+      // dataset de retreinamento com rótulo falso, e destrói a
+      // auditabilidade — não haveria como distinguir o que o modelo disse do
+      // que o usuário digitou.
+      //
+      // O backend de inferência escreve estes campos com o Admin SDK, que
+      // ignora as regras por natureza. Então proibi-los aqui não atrapalha o
+      // servidor e fecha o cliente.
+      function serverOwnedFields() {
+        return ['speciesId', 'scientificName', 'confidence', 'species',
+                'alternatives', 'rejectionReason', 'modelVersion',
+                'reviewedBy', 'reviewedAt', 'humanSpeciesId', 'isMock'];
+      }
+
+      // A criação nasce sempre em `processing`.
+      //
+      // Os outros estados são CONCLUSÕES de uma análise, e a análise não
+      // acontece no aplicativo. Permitir que o cliente criasse um documento
+      // já `identified` seria o mesmo furo por outro caminho.
       function isValidIdentification() {
         return request.resource.data.userId is string
-          && isValidStatus(request.resource.data.status)
-          && request.resource.data.modelVersion is string
-          && request.resource.data.modelVersion.size() <= 64
-          // Confiança, quando existe, é uma probabilidade.
-          && (request.resource.data.confidence == null
-              || (request.resource.data.confidence is number
-                  && request.resource.data.confidence >= 0
-                  && request.resource.data.confidence <= 1))
+          && request.resource.data.status == 'processing'
+          && !request.resource.data.keys().hasAny(serverOwnedFields())
           && isValidPipelineFields()
           && isValidTimestamp('createdAt');
       }
@@ -204,10 +226,16 @@ service cloud.firestore {
       // outro usuário.
       // A atualização é o segundo passo normal do pipeline: o documento nasce
       // sem imagem e recebe os caminhos quando o envio termina.
+      // O cliente atualiza só o que ele produziu: os caminhos das imagens e a
+      // marca de falha de envio. `changedFields()` é o que torna isso
+      // verificável — ele lista o que a escrita está MUDANDO, então um
+      // documento já analisado pelo servidor não pode ter o resultado
+      // reescrito por quem o criou.
       allow update: if ownsExisting()
         && ownsIncoming()
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.createdAt == resource.data.createdAt
+        && !changedFields().hasAny(serverOwnedFields())
         && isValidStatus(request.resource.data.status)
         && isValidPipelineFields();
 
