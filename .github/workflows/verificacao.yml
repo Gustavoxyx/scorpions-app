@@ -66,11 +66,13 @@ jobs:
           channel: stable
           cache: true
 
-      # O emulador do Firestore roda na JVM.
+      # O emulador do Firestore roda na JVM, e o firebase-tools exige **21 ou
+      # acima**. Com 17 ele nem sobe o emulador: falha com "no longer supports
+      # Java version before 21" antes de avaliar uma regra sequer.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: actions/setup-node@v4
         with:
@@ -95,4 +97,7 @@ jobs:
 
       - name: Regras contra o emulador
         working-directory: firebase
-        run: npx --yes firebase-tools@latest emulators:exec --project demo-scorpions --only firestore,storage,auth "node --test --test-concurrency=1 test/firestore.test.mjs test/storage.test.mjs test/contract.test.mjs"
+        # Versão fixada de propósito. Com `@latest`, uma publicação do
+        # firebase-tools quebraria esta verificação sem ninguém ter tocado no
+        # projeto — e a falha pareceria um defeito do código.
+        run: npx --yes firebase-tools@15 emulators:exec --project demo-scorpions --only firestore,storage,auth "node --test --test-concurrency=1 test/firestore.test.mjs test/storage.test.mjs test/contract.test.mjs"
