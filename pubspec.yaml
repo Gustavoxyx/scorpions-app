@@ -49,9 +49,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/animations/
-
-  # A identidade visual (marca, placas, ilustrações) continua sendo
-  # desenhada com CustomPainter — zero arquivo. O único asset é a
-  # animação do escorpião da tela de análise.
+  # Nenhum asset. A identidade visual — marca, placas de espécie,
+  # ilustrações do onboarding — é desenhada com CustomPainter, e o
+  # aplicativo não carrega um único arquivo de imagem. Quando houver
+  # fotografias licenciadas (Fase 7), declare a pasta assets/ aqui.
