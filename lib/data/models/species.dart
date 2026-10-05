@@ -134,7 +134,12 @@ class Species {
 
   String get distributionSummary => distribution.join(' · ');
 
-  /// Texto de busca do catálogo, normalizado sem acentos.
+  /// Campos que a busca do catálogo examina, concatenados em minúsculas.
+  ///
+  /// **Os acentos continuam aqui.** O comentário anterior dizia "normalizado
+  /// sem acentos", e não era verdade — só `toLowerCase()` acontece. Quem remove
+  /// acento é `TextSearch.normalize`, aplicado por `SearchIndex` **uma vez**
+  /// sobre este texto, e não a cada tecla digitada.
   String get searchIndex => <String>[
         scientificName,
         commonName,

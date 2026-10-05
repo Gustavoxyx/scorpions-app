@@ -69,8 +69,12 @@ abstract final class FirebaseBootstrap {
     _initialized = true;
   }
 
-  /// Aponta os SDKs para os emuladores locais.
-  /// Teto do cache offline do Firestore. Ver a justificativa em [ensureReady].
+  /// Teto do cache offline do Firestore. A justificativa está em
+  /// [ensureInitialized], onde ele é aplicado.
+  ///
+  /// (Havia aqui um `/// Aponta os SDKs para os emuladores locais.` solto, que
+  /// escorregou de `_connectEmulators` e passou a descrever uma constante de
+  /// cache. Comentário errado é pior que nenhum: a próxima pessoa confia nele.)
   static const int _cacheMaximoBytes = 40 * 1024 * 1024;
 
   /// Descarta o cache local do Firestore.
@@ -115,7 +119,13 @@ abstract final class FirebaseBootstrap {
       AppEnvironmentConfig.storageEmulatorPort,
     );
 
-    debugPrint('[Scorpions] conectado aos emuladores em $host');
+    // A guarda não é zelo excessivo: `debugPrint` **continua escrevendo em
+    // release** — só `assert` é removido. Esta linha só roda no modo emulador,
+    // que não é compilado para produção, mas os outros `debugPrint` do projeto
+    // têm a guarda, e inconsistência viaja por imitação.
+    if (kDebugMode) {
+      debugPrint('[Scorpions] conectado aos emuladores em $host');
+    }
   }
 
   /// Ativa o App Check (§17).

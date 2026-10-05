@@ -1,3 +1,4 @@
+import '../../core/utils/text_search.dart';
 import '../mock/mock_species.dart';
 import '../models/species.dart';
 
@@ -18,6 +19,20 @@ abstract interface class SpeciesRepository {
 class MockSpeciesRepository implements SpeciesRepository {
   const MockSpeciesRepository();
 
+  /// Índice montado uma vez para o processo inteiro.
+  ///
+  /// `MockSpecies.all` é uma lista estática e imutável, então o índice dela
+  /// também pode ser.
+  ///
+  /// Sem `late`, e isso não é descuido: em Dart, **toda** variável estática é
+  /// inicializada de forma preguiçosa, na primeira leitura. O custo já cai na
+  /// primeira busca e não na carga da classe — que é o que importa aqui, porque
+  /// abrir o aplicativo não deve pagar por uma tela que o usuário talvez não
+  /// visite. O `late` que estava escrito aqui não acrescentava nada, e o
+  /// analisador apontou.
+  static final SearchIndex<Species> _indice =
+      SearchIndex<Species>(MockSpecies.all, (Species s) => s.searchIndex);
+
   @override
   Future<List<Species>> fetchAll() async => MockSpecies.all;
 
@@ -25,24 +40,5 @@ class MockSpeciesRepository implements SpeciesRepository {
   Future<Species?> findById(String id) async => MockSpecies.byId(id);
 
   @override
-  Future<List<Species>> search(String query) async {
-    final String q = _normalize(query);
-    if (q.isEmpty) return MockSpecies.all;
-    return MockSpecies.all
-        .where((Species s) => _normalize(s.searchIndex).contains(q))
-        .toList();
-  }
-
-  /// Remove acentos para que "escorpiao" encontre "escorpião".
-  static String _normalize(String input) {
-    const String from = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
-    const String to = 'aaaaaeeeeiiiiooooouuuucn';
-    final StringBuffer buffer = StringBuffer();
-    for (final int rune in input.toLowerCase().runes) {
-      final String char = String.fromCharCode(rune);
-      final int index = from.indexOf(char);
-      buffer.write(index >= 0 ? to[index] : char);
-    }
-    return buffer.toString().trim();
-  }
+  Future<List<Species>> search(String query) async => _indice.search(query);
 }

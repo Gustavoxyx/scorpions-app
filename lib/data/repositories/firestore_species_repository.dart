@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/utils/text_search.dart';
 import '../models/species.dart';
 import '../services/firebase_error_mapper.dart';
 import 'species_repository.dart';
@@ -41,6 +42,16 @@ class FirestoreSpeciesRepository implements SpeciesRepository {
   static const int _maxCatalogo = 500;
 
   List<Species>? _cache;
+
+  /// Índice de busca do catálogo em cache, montado junto dele.
+  ///
+  /// Normalizar o índice de cada espécie a cada tecla digitada custava
+  /// 1.171 – 2.686 µs por tecla para 200 espécies; com o índice pronto, 31 – 47
+  /// µs. Medido em `benchmark/search_normalization_benchmark.dart`.
+  ///
+  /// Nasce e morre com `_cache`: quem invalida um invalida o outro, senão a
+  /// busca responderia sobre um catálogo que já foi descartado.
+  SearchIndex<Species>? _indice;
 
   CollectionReference<Map<String, dynamic>> get _collection =>
       _firestore.collection('species');
@@ -85,27 +96,19 @@ class FirestoreSpeciesRepository implements SpeciesRepository {
   @override
   Future<List<Species>> search(String query) async {
     final List<Species> all = await fetchAll();
-    final String normalized = _normalize(query);
-    if (normalized.isEmpty) return all;
-
-    return all
-        .where((Species s) => _normalize(s.searchIndex).contains(normalized))
-        .toList(growable: false);
+    // Monta na primeira busca, não em `fetchAll`: quem só abre a ficha de uma
+    // espécie nunca paga por um índice que não vai consultar.
+    final SearchIndex<Species> indice = _indice ??=
+        SearchIndex<Species>(all, (Species s) => s.searchIndex);
+    return indice.search(query);
   }
 
   /// Descarta o cache — usado pelo "puxar para atualizar".
-  void invalidate() => _cache = null;
-
-  /// Remove acentos para que "escorpiao" encontre "escorpião".
-  static String _normalize(String input) {
-    const String from = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
-    const String to = 'aaaaaeeeeiiiiooooouuuucn';
-    final StringBuffer buffer = StringBuffer();
-    for (final int rune in input.toLowerCase().runes) {
-      final String char = String.fromCharCode(rune);
-      final int index = from.indexOf(char);
-      buffer.write(index >= 0 ? to[index] : char);
-    }
-    return buffer.toString().trim();
+  ///
+  /// O índice vai junto, e não é detalhe: um índice sobrevivente apontaria para
+  /// a lista antiga, devolvendo espécies que o catálogo recarregado já não tem.
+  void invalidate() {
+    _cache = null;
+    _indice = null;
   }
 }

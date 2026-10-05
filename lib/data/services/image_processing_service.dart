@@ -90,13 +90,42 @@ class DefaultImageProcessingService implements ImageProcessingService {
             format: validacao.format ?? ImageFormat.jpeg,
           );
 
+    final img.Image reduzida = _reduzir(
+      endireitada,
+      ImageLimits.processedMaxDimension,
+    );
     final ImageVariant processada = _encodar(
-      _reduzir(endireitada, ImageLimits.processedMaxDimension),
+      reduzida,
       ImageLimits.processedQuality,
     );
 
+    // A miniatura sai da imagem JÁ REDUZIDA, não do original.
+    //
+    // O custo de `copyResize` com `average` cresce com o fator de redução,
+    // porque a janela amostrada por pixel de destino cresce com ele. Produzir
+    // 320px a partir de 4000 amostra ~156 pixels por destino; a partir de
+    // 1600, ~25.
+    //
+    // Medido em `benchmark/image_pipeline_benchmark.dart`, a partir de
+    // 4000×3000, em duas execuções:
+    //
+    //     4000 → 320  (como era antes)    901 ms / 840 ms
+    //     1600 → 320  (como é agora)      115 ms / 134 ms
+    //
+    // Economia de ~700 a 790 ms por fotografia — e a Fase 5 manda duas.
+    //
+    // E a qualidade? É a pergunta que decide, porque média de médias *pode*
+    // borrar. Medido no mesmo arquivo: diferença média de **0,34 de 255** por
+    // canal, e nitidez (variância do laplaciano, o mesmo indicador que
+    // `ImageQualityService` usa para julgar foco) em **99,7%** da direta.
+    // Indistinguível.
+    //
+    // Ressalva honesta: a cena do benchmark é sintética. Para medir tempo isso
+    // não importa — o custo depende da contagem de pixels, igual à de uma foto
+    // do mesmo tamanho. Para qualidade percebida, confirmar com fotografia de
+    // campo fica pendente.
     final ImageVariant miniatura = _encodar(
-      _reduzir(endireitada, ImageLimits.thumbnailMaxDimension),
+      _reduzir(reduzida, ImageLimits.thumbnailMaxDimension),
       ImageLimits.thumbnailQuality,
     );
 
