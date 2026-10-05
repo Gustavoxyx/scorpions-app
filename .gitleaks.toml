@@ -1,0 +1,97 @@
+# Configuração do Gitleaks para o Scorpions.
+#
+# POR QUE ESTE ARQUIVO EXISTE
+# ---------------------------
+# O job `segredos` do CI varre o histórico inteiro procurando chave privada,
+# senha, token e service account. Sem este arquivo, ele quebraria na primeira
+# execução — com um falso positivo.
+#
+# O Gitleaks reconhece `AIza…` como chave de API do Google, e o projeto tem
+# cinco delas. Elas são a chave de API do Firebase **para cliente**, e são
+# **públicas por desenho**: o Google as embute em todo aplicativo Flutter, iOS e
+# web que usa Firebase, elas aparecem no JavaScript de qualquer site com
+# Firebase, e a documentação oficial diz que não são segredo. Elas identificam
+# o projeto; não autorizam nada.
+#
+# Quem autoriza são as Security Rules, que conferem `request.auth.uid`, mais o
+# App Check. Isso está registrado como INFO-2 em `security/SECURITY_AUDIT.md`.
+#
+# O PERIGO DE UM ARQUIVO COMO ESTE
+# --------------------------------
+# Uma lista de exceções ampla transforma a varredura em teatro: ela passa a
+# dizer "nada encontrado" porque foi ensinada a não olhar. Então as exceções
+# abaixo são estreitas de propósito:
+#
+# - por CAMINHO, só os arquivos que o Firebase gera e onde a chave pública
+#   pertence;
+# - por REGRA, só a que reconhece chave de API do Google;
+# - as **outras 150 regras** do Gitleaks continuam valendo em todos os
+#   arquivos, inclusive nesses.
+#
+# Ou seja: uma chave privada, uma senha ou uma service account dentro de
+# `firebase_options.dart` ainda quebra o CI. Só o padrão `AIza…`, só ali, é
+# tolerado.
+#
+# SE UM SEGREDO DE VERDADE APARECER
+# ---------------------------------
+# Não adicione exceção. Siga o procedimento de `security/CRYPTO_AUDIT.md`
+# (61.8): revogar, rotacionar, investigar, auditar. Uma exceção escrita para
+# fazer o CI passar é como a régua deixa de ser régua.
+
+[extend]
+# Herda as regras padrão. Este arquivo acrescenta exceções, não substitui o
+# conjunto — escrever as regras à mão aqui significaria perder as novas que o
+# Gitleaks publicar.
+useDefault = true
+
+[[rules]]
+  # Redeclara a regra de chave de API do Google só para pendurar nela uma
+  # lista de exceções por caminho. A regra continua ativa em todo o resto do
+  # repositório.
+  id = "gcp-api-key"
+  description = "Chave de API do Google (pública no caso do Firebase cliente)"
+  regex = '''AIza[0-9A-Za-z\-_]{35}'''
+  keywords = ["AIza"]
+
+  [rules.allowlist]
+    description = """
+      Arquivos gerados pelo Firebase, onde a chave de API do cliente pertence.
+      Não é segredo: ver o cabeçalho deste arquivo e INFO-2 na auditoria.
+    """
+    paths = [
+      # Gerado por `flutterfire configure`.
+      '''lib/firebase_options\.dart''',
+      '''lib/demo_firebase_options\.dart''',
+      # Gerado pelo console do Firebase, lido pelo plugin do Gradle.
+      '''android/app/google-services\.json''',
+      '''ios/Runner/GoogleService-Info\.plist''',
+      '''macos/Runner/GoogleService-Info\.plist''',
+      # Semeador do catálogo na nuvem. Faz login real com e-mail e senha (lida
+      # do teclado, com o eco desligado) e são as regras que decidem se ele
+      # pode escrever — a chave aqui só diz a qual projeto se conectar.
+      '''firebase/seed-cloud\.mjs''',
+    ]
+
+[allowlist]
+  description = "Exceções gerais, deliberadamente curtas"
+
+  paths = [
+    # Artefatos de build. Não são código-fonte: o que estiver aqui veio de
+    # `lib/`, e é lá que a varredura precisa pegar. Varrer os dois dobraria o
+    # ruído sem acrescentar cobertura.
+    '''^build/''',
+    '''^\.dart_tool/''',
+    '''^backend/\.venv/''',
+    '''^firebase/node_modules/''',
+  ]
+
+  regexes = [
+    # Valores de teste, escolhidos para serem obviamente falsos. O de
+    # `test_security.py` existe justamente para provar que a configuração
+    # recusa subir sem credencial.
+    '''nao-e-uma-chave''',
+    '''SEGREDO-QUE-NAO-PODE-VAZAR''',
+    # Espaços reservados do `.env.example`, que documenta os NOMES das
+    # variáveis — nunca os valores.
+    '''"project_id":"\.\.\."''',
+  ]

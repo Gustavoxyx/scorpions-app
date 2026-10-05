@@ -144,3 +144,76 @@ jobs:
         # firebase-tools quebraria esta verificação sem ninguém ter tocado no
         # projeto — e a falha pareceria um defeito do código.
         run: npx --yes firebase-tools@15 emulators:exec --project demo-scorpions --only firestore,storage,auth "node --test --test-concurrency=1 test/firestore.test.mjs test/storage.test.mjs test/contract.test.mjs"
+
+  segredos:
+    name: Varredura de segredos e dependências
+    runs-on: ubuntu-latest
+    steps:
+      # `fetch-depth: 0` traz o histórico inteiro, e é o ponto do job.
+      #
+      # Com a profundidade padrão (1), a varredura veria só o commit do topo.
+      # Um segredo commitado e removido no commit seguinte continuaria no
+      # histórico, recuperável por qualquer pessoa que clonasse o repositório —
+      # e a varredura diria que está tudo bem.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A auditoria de criptografia (C-1) varreu o histórico à mão e não achou
+      # segredo nenhum: só a chave de API do Firebase para cliente, que é
+      # pública por desenho, e um `"private_key":"nao-e-uma-chave"` de teste.
+      #
+      # Mas aquele resultado vale para aquele dia. O próximo commit não é
+      # coberto por ele, e um segredo commitado por engano às onze da noite não
+      # espera a próxima auditoria. É a lacuna mais acionável que a auditoria
+      # encontrou: barato de fechar, e fecha um caminho que revisão humana não
+      # cobre de forma confiável.
+      # A configuração vive em `.gitleaks.toml`, na raiz, e as exceções dela são
+      # estreitas de propósito: só o padrão `AIza…`, só nos arquivos que o
+      # Firebase gera. As outras ~150 regras continuam valendo em todos os
+      # arquivos, inclusive nesses. O cabeçalho daquele arquivo explica por que a
+      # chave de API do cliente não é segredo, e por que uma lista de exceções
+      # ampla transformaria esta varredura em teatro.
+      #
+      # Se este passo falhar: **não** adicione exceção para fazer passar. Siga o
+      # procedimento de `security/CRYPTO_AUDIT.md` (61.8) — revogar, rotacionar,
+      # investigar, auditar.
+      #
+      # Nota: a `gitleaks-action` pede `GITLEAKS_LICENSE` para repositório de
+      # organização. Para repositório pessoal, como este, não precisa.
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # Vulnerabilidades conhecidas nas dependências do backend (FASE 27/30).
+      #
+      # `|| true` NÃO está aqui: se houver vulnerabilidade conhecida numa
+      # dependência de produção, o job falha. O briefing §47 pede que o
+      # pipeline bloqueie, e um aviso que ninguém lê não bloqueia nada.
+      - name: Vulnerabilidades no backend
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit --requirement requirements.txt --strict
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Informativo, de propósito: `pub outdated` reporta versões novas, não
+      # vulnerabilidades. Quebrar o CI porque um pacote publicou uma versão
+      # seria quebrar o CI sem ninguém ter tocado no projeto. O que vale aqui é
+      # a saída ficar registrada na execução, para leitura humana.
+      - name: Dependências desatualizadas do app (informativo)
+        run: |
+          flutter pub get
+          flutter pub outdated || true
