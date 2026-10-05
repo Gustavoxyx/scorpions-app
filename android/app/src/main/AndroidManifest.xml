@@ -8,7 +8,20 @@
     <application
         android:label="Scorpions"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false">
+        <!-- allowBackup=false (MASVS-STORAGE-2): o backup do Android levaria
+             junto o cache do Firestore, que guarda o perfil e o historico do
+             usuario, e o token de sessao. Nada aqui precisa sobreviver a uma
+             troca de aparelho: o historico vive no Firestore e volta no
+             primeiro login.
+
+             usesCleartextTraffic=false e explicito de proposito. O padrao do
+             Android 9+ ja e esse, mas declarar transforma uma garantia que
+             depende da versao do sistema em uma garantia do aplicativo. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

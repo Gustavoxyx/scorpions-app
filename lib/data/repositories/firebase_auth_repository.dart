@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fb;
 import '../models/app_user.dart';
 import '../models/user_role.dart';
 import '../services/failure.dart';
+import '../services/firebase_bootstrap.dart';
 import '../services/firebase_error_mapper.dart';
 import '../services/firestore_write_mapper.dart';
 import 'auth_repository.dart';
@@ -118,7 +119,21 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signOut() => FirebaseErrorMapper.guard(() => _auth.signOut());
+  Future<void> signOut() {
+    return FirebaseErrorMapper.guard(() async {
+      await _auth.signOut();
+
+      // Encerrar a sessão não bastava: o Firestore guarda em disco tudo que
+      // foi lido — perfil e histórico — e esses arquivos continuavam lá
+      // depois da saída. As Security Rules barram o acesso pela rede, não o
+      // arquivo que já está no aparelho.
+      //
+      // Vem depois do `signOut` de propósito. Limpar primeiro deixaria uma
+      // janela com a sessão ainda viva e o cache vazio, e qualquer ouvinte
+      // ativo repopularia o que acabou de ser apagado.
+      await FirebaseBootstrap.clearLocalCache();
+    });
+  }
 
   @override
   void dispose() {

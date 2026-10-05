@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ substituiu `allowBackup`/`fullBackupContent` por estas regras.
+  Declarar as duas formas cobre o intervalo de versoes que o aplicativo
+  suporta: sem este arquivo, um aparelho com Android 12 ou mais novo
+  ignoraria o `allowBackup="false"` do manifesto.
+
+  `<exclude domain="root" path="." />` recusa tudo. E o que queremos: o
+  historico do usuario vive no Firestore, nao no aparelho.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

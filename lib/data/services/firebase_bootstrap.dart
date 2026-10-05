@@ -52,7 +52,17 @@ abstract final class FirebaseBootstrap {
     if (!AppEnvironmentConfig.dataSource.isEmulator) {
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        // Teto explícito, no lugar de `CACHE_SIZE_UNLIMITED`.
+        //
+        // Sem teto, o cache cresce enquanto houver disco — e o que ele guarda
+        // é o perfil e o histórico do usuário, em claro, no aparelho. Num
+        // telefone com root ou num backup do sistema, isso é extraível.
+        //
+        // 40 MB cobre com folga o catálogo inteiro e centenas de
+        // identificações, que é o uso real. Passado isso, o Firestore
+        // descarta o mais antigo sozinho — e o que foi descartado volta da
+        // rede quando o usuário abrir.
+        cacheSizeBytes: _cacheMaximoBytes,
       );
     }
 
@@ -60,6 +70,35 @@ abstract final class FirebaseBootstrap {
   }
 
   /// Aponta os SDKs para os emuladores locais.
+  /// Teto do cache offline do Firestore. Ver a justificativa em [ensureReady].
+  static const int _cacheMaximoBytes = 40 * 1024 * 1024;
+
+  /// Descarta o cache local do Firestore.
+  ///
+  /// Chamado no encerramento de sessão. Sem isto, o perfil e o histórico de
+  /// quem saiu continuam em disco: as Security Rules impedem o acesso **pela
+  /// rede**, mas o arquivo local já está gravado, e num aparelho
+  /// compartilhado ou comprometido isso é dado pessoal de uma pessoa ao
+  /// alcance de outra.
+  ///
+  /// A ordem importa e não é negociável: `clearPersistence` recusa trabalhar
+  /// enquanto houver conexão viva, então `terminate` vem antes. O SDK
+  /// reconecta sozinho na próxima operação.
+  ///
+  /// Falhar aqui não pode impedir o logout — sair da conta é mais importante
+  /// que limpar o cache, e insistir deixaria o usuário preso numa sessão que
+  /// ele pediu para encerrar.
+  static Future<void> clearLocalCache() async {
+    try {
+      await FirebaseFirestore.instance.terminate();
+      await FirebaseFirestore.instance.clearPersistence();
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[Scorpions] cache local não foi limpo: $error');
+      }
+    }
+  }
+
   static Future<void> _connectEmulators() async {
     const String host = AppEnvironmentConfig.emulatorHost;
 
