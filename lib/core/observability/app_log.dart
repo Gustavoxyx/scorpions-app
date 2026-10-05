@@ -13,6 +13,7 @@ enum AppEvent {
   imageProcessingCompleted('image_processing_completed'),
   uploadStarted('upload_started'),
   uploadCompleted('upload_completed'),
+  uploadFailed('upload_failed'),
   uploadSkipped('upload_skipped'),
   identificationCreated('identification_created'),
   pipelineCancelled('pipeline_cancelled'),

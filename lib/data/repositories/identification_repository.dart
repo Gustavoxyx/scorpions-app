@@ -14,7 +14,7 @@ abstract interface class IdentificationRepository {
 
   Future<void> save(IdentificationResult result);
 
-  /// Liga as imagens já enviadas a um registro que existe.
+  /// Registra o desfecho do envio das imagens num registro que já existe.
   ///
   /// # Por que não é um `save` com os campos preenchidos
   /// Porque `save` grava o documento inteiro, e `createdAt` é sempre um carimbo
@@ -22,11 +22,17 @@ abstract interface class IdentificationRepository {
   /// momento do upload, bagunçando a ordem do histórico. Pior: a regra de
   /// segurança que mantém `createdAt` imutável recusaria a escrita.
   ///
-  /// Esta operação toca apenas os dois campos que o envio produz.
-  Future<void> attachImages(
+  /// # Por que cobre também o fracasso
+  /// Porque fracassar é um desfecho tão normal quanto o outro: hoje o Cloud
+  /// Storage depende de um plano pago que o projeto ainda não tem, e o envio
+  /// simplesmente não acontece. Quando isso ocorre, a identificação continua
+  /// existindo — só que sem foto — e [errorCode] é o que permite à tela dizer
+  /// isso ao usuário em vez de mostrar um registro mudo e quebrado.
+  Future<void> attachUploadResult(
     String id, {
     String? imageUrl,
     String? thumbnailUrl,
+    String? errorCode,
   });
 
   Future<void> delete(String id);
@@ -64,16 +70,18 @@ class InMemoryIdentificationRepository implements IdentificationRepository {
   }
 
   @override
-  Future<void> attachImages(
+  Future<void> attachUploadResult(
     String id, {
     String? imageUrl,
     String? thumbnailUrl,
+    String? errorCode,
   }) async {
     final int i = _items.indexWhere((IdentificationResult r) => r.id == id);
     if (i < 0) return;
     _items[i] = _items[i].copyWith(
       imageUrl: imageUrl,
       thumbnailUrl: thumbnailUrl,
+      errorCode: errorCode,
     );
   }
 

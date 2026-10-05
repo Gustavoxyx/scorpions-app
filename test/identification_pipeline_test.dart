@@ -71,16 +71,18 @@ class _RepoFalso implements IdentificationRepository {
   /// Registra as ligações de imagem como uma gravação a mais, para que os
   /// testes continuem lendo a história completa em `gravacoes`.
   @override
-  Future<void> attachImages(
+  Future<void> attachUploadResult(
     String id, {
     String? imageUrl,
     String? thumbnailUrl,
+    String? errorCode,
   }) async {
     final int i = gravacoes.indexWhere((IdentificationResult r) => r.id == id);
     if (i < 0) return;
     gravacoes.add(gravacoes[i].copyWith(
       imageUrl: imageUrl,
       thumbnailUrl: thumbnailUrl,
+      errorCode: errorCode,
     ));
   }
 
@@ -96,9 +98,18 @@ class _RepoFalso implements IdentificationRepository {
 }
 
 class _UploaderFalso implements ImageUploadService {
-  _UploaderFalso({this.falharTudo = false});
+  _UploaderFalso({this.falharTudo = false, this.lancar});
 
   final bool falharTudo;
+
+  /// Exceção a lançar em vez de responder.
+  ///
+  /// `falharTudo` cobre o envio que **responde** sem ter enviado nada; este
+  /// cobre o envio que nem chega a responder — que é o que o Cloud Storage
+  /// faz quando o projeto está no plano Spark. São falhas diferentes e
+  /// percorrem caminhos diferentes do pipeline.
+  final Object? lancar;
+
   final List<String> caminhosPedidos = <String>[];
   final List<String> apagados = <String>[];
 
@@ -110,6 +121,7 @@ class _UploaderFalso implements ImageUploadService {
   }) async {
     final String prefixo = 'users/$userId/identifications/$identificationId';
     caminhosPedidos.add(prefixo);
+    if (lancar != null) throw lancar!;
     if (falharTudo) return const UploadedImagePaths.none();
     return UploadedImagePaths(
       original: '$prefixo/original.jpg',
@@ -287,6 +299,58 @@ void main() {
           reason: 'a identificação vale mais que o anexo');
       expect(saida.result!.imageUrl, isNull);
       expect(repo.gravacoes.last.status, IdentificationStatus.processing);
+    });
+
+    // Regressão da Fase 4.
+    //
+    // Quando o envio saiu do repositório e veio para o pipeline, a tolerância
+    // a falha ficou para trás: `uploadAll` passou a ser chamado sem `catch`.
+    // O documento já estava gravado uma linha antes, então a exceção deixava
+    // um registro preso em `processing` que ninguém mais tocava — e o usuário
+    // via um erro depois de a foto já ter sido aceita.
+    //
+    // É o caminho que o projeto percorre HOJE: Storage exige Blaze, que ainda
+    // não foi autorizado, então toda tentativa real cai aqui.
+    test('upload que lança não perde a identificação nem a marca', () async {
+      final IdentificationPipeline p = montar(
+        envio: _UploaderFalso(
+          lancar: const AppFailure(
+            kind: FailureKind.permission,
+            message: 'Armazenamento indisponível.',
+            code: 'storage-unavailable',
+          ),
+        ),
+      );
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+      );
+
+      expect(saida.result, isNotNull,
+          reason: 'a exceção do envio não pode derrubar o que já foi gravado');
+      expect(saida.result!.imageUrl, isNull);
+      expect(saida.result!.errorCode, 'storage-unavailable',
+          reason: 'sem a marca, a tela não tem como explicar a foto ausente');
+      expect(repo.gravacoes.last.errorCode, 'storage-unavailable',
+          reason: 'a marca precisa chegar ao documento, não só ao retorno');
+      expect(repo.apagados, isEmpty,
+          reason: 'falha de envio não é cancelamento — nada a apagar');
+    });
+
+    test('exceção desconhecida no envio vira código genérico', () async {
+      final IdentificationPipeline p =
+          montar(envio: _UploaderFalso(lancar: StateError('qualquer coisa')));
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+      );
+
+      expect(saida.result!.errorCode, 'upload-failed');
+      expect(repo.apagados, isEmpty);
     });
   });
 

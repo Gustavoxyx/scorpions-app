@@ -27,6 +27,19 @@ class FirestoreSpeciesRepository implements SpeciesRepository {
 
   final FirebaseFirestore _firestore;
 
+  /// Teto da listagem do catálogo.
+  ///
+  /// Baixar a coleção inteira é a decisão certa para esta ordem de grandeza
+  /// (ver acima), mas "inteira" precisa ter fim. Sem o teto, um catálogo que
+  /// crescesse por engano — um seed rodado duas vezes, uma importação com
+  /// defeito — viraria download ilimitado em celular de banca, custo de
+  /// leitura no Firestore e memória que o aparelho modesto não tem.
+  ///
+  /// 500 é folgado de propósito: a fauna de escorpiões descrita no Brasil não
+  /// chega a 200 espécies, então o limite nunca é atingido em uso normal — ele
+  /// existe para o caso anormal.
+  static const int _maxCatalogo = 500;
+
   List<Species>? _cache;
 
   CollectionReference<Map<String, dynamic>> get _collection =>
@@ -39,7 +52,7 @@ class FirestoreSpeciesRepository implements SpeciesRepository {
 
     return FirebaseErrorMapper.guard(() async {
       final QuerySnapshot<Map<String, dynamic>> snapshot =
-          await _collection.orderBy('scientificName').get();
+          await _collection.orderBy('scientificName').limit(_maxCatalogo).get();
 
       final List<Species> species = snapshot.docs
           .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) =>

@@ -46,6 +46,8 @@ class HistoryCard extends StatelessWidget {
             height: thumb,
             child: CapturedPhoto(
               image: result.image,
+              // A miniatura existe exatamente para esta lista.
+              remoteUrl: result.thumbnailUrl,
               borderRadius: AppRadii.brSm,
             ),
           ),

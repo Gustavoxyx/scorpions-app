@@ -12,6 +12,17 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Não aparece em nenhum `import` — e mesmo assim precisa ficar.
+  #
+  # `app_theme.dart` usa `CupertinoPageTransitionsBuilder` para dar ao iOS e
+  # ao macOS a transição de página nativa. Importar `package:flutter/
+  # cupertino.dart` traz junto a classe `CupertinoIcons`, cujos `IconData`
+  # declaram a família de fontes deste pacote. Sem ele o build avisa
+  # "Expected to find fonts for (…CupertinoIcons)" a cada compilação.
+  #
+  # Não pesa: o tree-shaking de ícones remove os glifos não usados.
+  # Já foi removido uma vez numa limpeza de dependências; este comentário
+  # existe para que não seja removido de novo.
   cupertino_icons: ^1.0.8
 
   # --- Navegação ------------------------------------------------------------
@@ -38,7 +49,6 @@ dependencies:
   image: ^4.10.1
   permission_handler: ^13.0.2
   connectivity_plus: ^7.3.1
-  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

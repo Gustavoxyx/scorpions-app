@@ -122,11 +122,20 @@ class CapturedPhoto extends StatelessWidget {
   const CapturedPhoto({
     super.key,
     required this.image,
+    this.remoteUrl,
     this.borderRadius = AppRadii.brLg,
     this.fit = BoxFit.cover,
   });
 
   final CapturedImage? image;
+
+  /// Endereço a usar no lugar de `image.url`.
+  ///
+  /// Existe para que uma lista possa pedir a **miniatura** em vez da imagem
+  /// de análise. Sem isso, rolar o histórico baixaria a foto inteira de cada
+  /// item — que é justamente o desperdício que gerar a miniatura evita.
+  final String? remoteUrl;
+
   final BorderRadius borderRadius;
   final BoxFit fit;
 
@@ -134,23 +143,73 @@ class CapturedPhoto extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppColors c = context.colors;
     final CapturedImage? img = image;
+    final String? url = remoteUrl ?? img?.url;
 
+    // A ordem é por custo, do mais barato ao mais caro: o que já está na
+    // memória, depois o que está em disco, depois o que exige rede.
+    //
+    // O ramo da rede faltava até a Fase 4, e o efeito era silencioso e feio:
+    // `IdentificationResult.fromMap` monta `CapturedImage.remote(url: …)` e o
+    // comentário de lá diz "a tela usa a URL" — só que esta tela nunca a
+    // lia. Toda identificação reaberta do banco caía no placeholder e exibia
+    // "Imagem simulada", o que não é só uma falta: é uma informação falsa
+    // sobre uma foto que existe e já foi paga em banda de upload.
     Widget content;
-    if (img != null && img.bytes != null) {
+    if (img != null && img.hasBytes) {
       content = Image.memory(img.bytes!, fit: fit);
     } else if (img != null && img.hasFile && !kIsWeb) {
       content = Image.file(
         File(img.path!),
         fit: fit,
+        // O caminho local é temporário: o sistema limpa o cache quando quer.
+        // Se o arquivo sumiu mas a cópia remota existe, vale a rede.
         errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
-            _placeholder(context, c),
+            url == null ? _placeholder(context, c) : _remote(context, c, url),
       );
+    } else if (url != null) {
+      content = _remote(context, c, url);
     } else {
       content = _placeholder(context, c);
     }
 
     return ClipRRect(borderRadius: borderRadius, child: content);
   }
+
+  Widget _remote(BuildContext context, AppColors c, String url) {
+    return Image.network(
+      url,
+      fit: fit,
+      // Enquanto baixa, o mesmo fundo do placeholder — sem rodinha, que numa
+      // lista de miniaturas viraria um piscar de várias ao mesmo tempo.
+      loadingBuilder: (
+        BuildContext context,
+        Widget child,
+        ImageChunkEvent? progress,
+      ) =>
+          progress == null ? child : _surface(c),
+      errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+          _placeholder(context, c),
+    );
+  }
+
+  Widget _surface(AppColors c) => DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[c.surfaceVariant, c.surfaceSunken],
+          ),
+        ),
+      );
+
+  /// Texto do vazio.
+  ///
+  /// "Imagem simulada" só é verdade quando a identificação nasceu no modo de
+  /// demonstração. Para uma foto real que não chegou — envio recusado, arquivo
+  /// temporário já limpo, rede fora — dizer "simulada" é afirmar algo falso
+  /// sobre o registro do usuário.
+  String get _emptyLabel =>
+      (image?.isSimulated ?? true) ? 'Imagem simulada' : 'Foto indisponível';
 
   Widget _placeholder(BuildContext context, AppColors c) {
     return Container(
@@ -187,7 +246,7 @@ class CapturedPhoto extends StatelessWidget {
                     if (side > 160) ...<Widget>[
                       AppSpacing.gapMd,
                       Text(
-                        'Imagem simulada',
+                        _emptyLabel,
                         style: context.text.overline
                             .copyWith(color: c.textTertiary),
                       ),

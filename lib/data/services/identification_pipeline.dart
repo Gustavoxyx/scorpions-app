@@ -198,28 +198,63 @@ class IdentificationPipeline {
       AppLog.event(AppEvent.uploadStarted, <String, Object?>{
         'kb': (processada.totalBytes / 1024).round(),
       });
-      final UploadedImagePaths caminhos = await _uploader.uploadAll(
-        image: processada,
-        userId: uid,
-        identificationId: id,
-      );
-      AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
-        'files': caminhos.uploadedCount,
-      });
+
+      // O envio pode falhar sem que nada esteja errado com a foto.
+      //
+      // O caso concreto deste projeto: o Cloud Storage exige plano Blaze, que
+      // ainda não foi autorizado, então `uploadAll` lança a cada tentativa.
+      // Sem este `catch`, a exceção subiria e o usuário veria um erro — mas o
+      // documento já teria sido gravado na linha acima e ficaria preso em
+      // `processing` para sempre, invisível e órfão.
+      //
+      // Esta tolerância existia na Fase 3, dentro do repositório. Ao mover o
+      // envio para cá eu a deixei para trás; é regressão minha, e o remendo é
+      // trazê-la junto da responsabilidade que mudou de lugar.
+      //
+      // Perder a foto é ruim. Perder a foto **e** o registro é pior: a
+      // identificação sobrevive marcada, e a tela tem como explicar por quê.
+      UploadedImagePaths? caminhos;
+      String? falha;
+      try {
+        caminhos = await _uploader.uploadAll(
+          image: processada,
+          userId: uid,
+          identificationId: id,
+        );
+        AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
+          'files': caminhos.uploadedCount,
+        });
+      } on AppFailure catch (e) {
+        falha = e.code ?? 'upload-failed';
+      } catch (_) {
+        falha = 'upload-failed';
+      }
+
+      if (falha != null) {
+        AppLog.event(AppEvent.uploadFailed, <String, Object?>{'code': falha});
+      }
 
       if (_cancelled) return _abortar(uid, id);
 
       // A referência gravada aponta para a versão de análise, com queda para
       // o original: é ela que um modelo vai consumir.
       registro = registro.copyWith(
-        imageUrl: caminhos.forAnalysis,
-        thumbnailUrl: caminhos.thumbnail,
+        imageUrl: caminhos?.forAnalysis,
+        thumbnailUrl: caminhos?.thumbnail,
+        errorCode: falha,
       );
-      await _repository.attachImages(
-        id,
-        imageUrl: caminhos.forAnalysis,
-        thumbnailUrl: caminhos.thumbnail,
-      );
+
+      // Se nem a marcação conseguir ser gravada, o registro continua de pé
+      // como foi criado. Insistir aqui só transformaria um problema de rede
+      // em erro de tela para um trabalho que já terminou.
+      try {
+        await _repository.attachUploadResult(
+          id,
+          imageUrl: caminhos?.forAnalysis,
+          thumbnailUrl: caminhos?.thumbnail,
+          errorCode: falha,
+        );
+      } catch (_) {}
     }
 
     onStage?.call(PipelineStage.awaitingAnalysis);

@@ -49,8 +49,6 @@ enum AppEnvironment {
 
   final String id;
 
-  bool get isProduction => this == AppEnvironment.production;
-
   static AppEnvironment fromId(String raw) {
     for (final AppEnvironment env in AppEnvironment.values) {
       if (env.id == raw) return env;

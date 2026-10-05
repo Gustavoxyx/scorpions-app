@@ -111,7 +111,15 @@ abstract final class FirebaseBootstrap {
     } catch (error) {
       // App Check indisponível não pode impedir o aplicativo de abrir: as
       // regras continuam protegendo os dados.
-      debugPrint('[Scorpions] App Check não ativado: $error');
+      //
+      // A guarda de `kDebugMode` não é zelo excessivo: `debugPrint` **continua
+      // escrevendo em release** (só `assert` é removido), e a mensagem de uma
+      // exceção do SDK carrega nome de classe interna e, às vezes, trecho de
+      // URL. Em release isso iria para o logcat, legível por quem tiver o
+      // aparelho na mão — exatamente o que o briefing §16/§27 proíbe.
+      if (kDebugMode) {
+        debugPrint('[Scorpions] App Check não ativado: $error');
+      }
     }
   }
 }

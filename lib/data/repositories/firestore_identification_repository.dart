@@ -95,7 +95,7 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
 
       // Este repositório **não envia imagem**. Quem envia é o
       // `IdentificationPipeline`, e depois liga os caminhos com
-      // [attachImages].
+      // [attachUploadResult].
       //
       // Antes a gravação tentava enviar por conta própria, e o resultado era um
       // envio duplicado do original: o pipeline já mandava as três formas logo
@@ -110,10 +110,11 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
   }
 
   @override
-  Future<void> attachImages(
+  Future<void> attachUploadResult(
     String id, {
     String? imageUrl,
     String? thumbnailUrl,
+    String? errorCode,
   }) {
     return FirebaseErrorMapper.guard(() async {
       // `update` e não `set`: toca só estes campos. O documento inteiro traria
@@ -122,6 +123,7 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
       await _collection.doc(id).update(<String, Object?>{
         'imageUrl': ?imageUrl,
         'thumbnailUrl': ?thumbnailUrl,
+        'errorCode': ?errorCode,
       });
     });
   }
