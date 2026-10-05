@@ -20,7 +20,7 @@ Estes não são planos — são decisões já tomadas e verificáveis.
 | **Minimização** | uma única permissão (`CAMERA`), e marcada `required="false"`. Sem localização, sem identificador de aparelho, sem contatos, sem telemetria |
 | **Minimização, de novo** | 🟢 **EXIF e GPS removidos no aparelho, antes do envio.** A coordenada de onde a foto foi tirada **não sai do telefone** |
 | **Finalidade** | cada campo de `users/{uid}` e de `identifications/{id}` tem finalidade escrita em `DATA_MAP.md` |
-| **Segurança** | Security Rules por dono, cifra em repouso gerenciada, TLS, App Check, 94 testes de segurança |
+| **Segurança** | Security Rules por dono, cifra em repouso gerenciada, TLS, App Check, e testes automatizados de regras (72) e de backend (164) |
 | **Controle de acesso** | o usuário A não alcança nada do usuário B — verificado por 60 testes contra o emulador |
 | **Opt-in** | `analyticsEnabled` nasce **falso**, e não há SDK de analytics instalado para ligar |
 | **Não treinar sem consentimento** | nenhuma foto de usuário entra em treinamento. A Fase 5 decidiu usar bancos públicos (iNaturalist/GBIF) justamente para que o modelo inicial não dependa de foto de ninguém |
@@ -37,19 +37,25 @@ ainda era possível. Depois do envio, nada downstream poderia desfazer.
 | **Confirmação e acesso** (I, II) | 🟡 parcial. O usuário vê o próprio perfil e histórico no aplicativo, mas não há uma visão "todos os meus dados" |
 | **Correção** (III) | 🟡 parcial. Dá para editar o nome; o e-mail, não |
 | **Anonimização, bloqueio ou eliminação** de dado desnecessário (IV) | 🔴 **não existe** |
-| **Portabilidade** (V) | 🔴 **não existe.** Nada exporta os dados do titular |
-| **Eliminação** dos dados tratados com consentimento (VI) | 🔴 **não existe.** É o HIGH-2 |
+| **Portabilidade** (V) | 🟢 `GET /v1/me/data`, pela tela "Meus dados". Devolve perfil e identificações em JSON; as imagens ficam acessíveis pelo aplicativo |
+| **Eliminação** dos dados tratados com consentimento (VI) | 🟢 `DELETE /v1/me`, pela tela "Meus dados", com senha confirmada. Cascata: imagens, identificações, perfil, login |
 | **Informação sobre compartilhamento** (VII) | 🟡 o inventário existe em `THIRD_PARTY_PROCESSORS.md`, mas não é mostrado ao usuário |
 | **Informação sobre não consentir** (VIII) | 🔴 não há tela de consentimento |
 | **Revogação do consentimento** (IX) | 🔴 não há consentimento registrado para revogar |
 
-**Cinco dos nove direitos não têm caminho nenhum hoje.** O mais grave é o VI: o
-titular não consegue apagar o que é dele, de forma alguma — nem pelo aplicativo,
-nem pedindo, porque não há a quem pedir.
+**No diagnóstico, cinco dos nove direitos não tinham caminho nenhum.** O mais
+grave era o VI: o titular não conseguia apagar o que é dele, de forma alguma.
+Esse e o V foram implementados em seguida — ver abaixo. **Restam três sem
+caminho** (IV, VIII e IX), e os três dependem de existir uma política de
+privacidade com tela de consentimento, que precisa de validação jurídica.
 
-### O que fecha a maior parte disso
+Uma ressalva que não pode faltar: os dois direitos implementados passam pelo
+backend, e **o backend ainda não está publicado**. O código existe e está
+testado; para um usuário real exercer o direito, o serviço precisa estar no ar.
 
-Dois endpoints no backend que **já existe**, usando o Admin SDK:
+### O que fechou a maior parte disso
+
+Dois endpoints no backend, usando o Admin SDK — **implementados e testados**:
 
 ```
 DELETE /v1/me      ─►  apaga, em cascata:
@@ -135,13 +141,13 @@ Em ordem de bloqueio:
 
 | | O que | Quem |
 |---|---|---|
-| 1 | **Exclusão de conta** (Art. 18, VI) | implementável no backend que já existe |
+| 1 | ~~Exclusão de conta~~ (Art. 18, VI) | 🟢 feito; falta **publicar o backend** |
 | 2 | **Política de privacidade** publicada, com tela de aceite | precisa de validação jurídica |
-| 3 | **Exportação de dados** (Art. 18, V) | mesmo caminho do item 1 |
+| 3 | ~~Exportação de dados~~ (Art. 18, V) | 🟢 feito; idem |
 | 4 | **Prazos de retenção** em vigor | ver `RETENTION_POLICY.md` |
 | 5 | **Controlador e encarregado** definidos | **UTFPR** |
-| 6 | Verificação de e-mail (MEDIUM-3) | implementável |
-| 7 | Audit log (LOW-4) | implementável |
+| 6 | ~~Verificação de e-mail~~ (MEDIUM-3) | 🟢 feito |
+| 7 | ~~Audit log~~ (LOW-4) | 🟢 feito |
 
 **Nenhum destes bloqueia o TCC**, que é demonstração com dados do próprio autor.
 Todos bloqueiam uso por terceiros. A diferença entre as duas situações é o ponto

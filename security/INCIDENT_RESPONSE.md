@@ -39,10 +39,13 @@ Hoje a detecção é quase toda manual, e isso precisa estar escrito. O que exis
 | Erro em massa | logs do provedor do backend |
 | Falha de regra | Firebase Console → Firestore → Uso |
 | Segredo commitado | 🟢 job `segredos` do CI (Gitleaks) — **o único automático** |
-| Acesso indevido a dado de usuário | 🔴 **não detectável.** Não há audit log (LOW-4) |
+| Acesso indevido a dado de usuário | 🟡 **parcialmente detectável.** O audit log registra o que passa pelo backend — exclusão e exportação de conta, cota estourada, acesso à fila de revisão. Leitura direta pelo Firestore, permitida pelas regras a um admin, **não** passa por ele |
+| Abuso de cota | 🟢 entrada `quota.exceeded` no audit log |
 
-A última linha é a mais importante: **um acesso indevido bem-sucedido hoje não
-deixa rastro.** Nenhum plano de resposta compensa isso.
+A penúltima linha continua sendo a mais importante: um acesso administrativo
+direto ao banco ainda não deixa rastro próprio. O que mudou é que as operações
+críticas agora deixam — e que o registro não pode ser lido nem apagado por
+cliente nenhum, inclusive admin.
 
 ### 2. Confirmar
 
@@ -95,7 +98,7 @@ Antes de corrigir qualquer coisa:
 ### 6. Corrigir a causa, não o sintoma
 
 Fechar a brecha é obrigatório. **E escrever o teste que a pegaria** também — os
-94 testes de segurança deste projeto existem para que a mesma falha não volte.
+testes de segurança deste projeto existem para que a mesma falha não volte.
 
 Um incidente sem teste novo é um incidente que pode acontecer duas vezes.
 
@@ -146,7 +149,7 @@ primeira hora, que é a que mais importa.
 
 | | Falta | Efeito |
 |---|---|---|
-| 1 | **Audit log** (LOW-4) | acesso indevido não deixa rastro — o passo 5 fica sem dados |
+| 1 | Audit log cobrindo **leitura administrativa direta** | o registro existe para o que passa pelo backend; a leitura pelo console ou pelas regras não é coberta |
 | 2 | **Alertas** (FASE 49) | a detecção é olhar o painel por acaso |
 | 3 | **Backup** | o passo 8 pode não ter o que fazer |
 | 4 | **MFA na conta administrativa** (LOW-3) | o pior cenário (T-4 no modelo de ameaças) continua a uma senha de distância |

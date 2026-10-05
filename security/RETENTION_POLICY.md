@@ -53,16 +53,16 @@ só risco acumulado.
 
 | | Falta | Por quê |
 |---|---|---|
-| 1 | **Exclusão de conta em cascata** | é o HIGH-2. Sem ela, nem o titular consegue apagar o que é dele, e nenhum prazo é aplicável |
+| 1 | ~~Exclusão de conta em cascata~~ | 🟢 **existe** — `DELETE /v1/me`. É o mecanismo que o executor de prazos vai reutilizar |
 | 2 | **Um executor** — algo que rode periodicamente e apague o que venceu | uma política que ninguém aplica é um texto. Exige Cloud Scheduler + Function, logo **Blaze** |
 | 3 | **Marca de último acesso** em `users/{uid}` | `updatedAt` existe, mas é escrito em qualquer atualização, não só em acesso. Sem um campo próprio, "24 meses sem uso" não é calculável |
-| 4 | **Exclusão em cascata do Storage** | apagar o documento do Firestore não apaga a imagem. Uma imagem órfã é dado pessoal sem dono e sem regra que a proteja — pior que antes |
-| 5 | **Registro de quando cada exclusão aconteceu** | sem isso não há como demonstrar que a política foi cumprida, e demonstrar é parte da obrigação |
+| 4 | ~~Exclusão em cascata do Storage~~ | 🟢 **existe**, dentro da mesma cascata, e roda **primeiro** — justamente para não sobrar imagem órfã |
+| 5 | ~~Registro de quando cada exclusão aconteceu~~ | 🟢 **existe** — entrada `account.deleted` no audit log, com contagens e horário do servidor |
 
-Os itens 2 e 4 dependem do plano Blaze, que ainda não foi aprovado. O item 1
-não depende: pode ser implementado no backend FastAPI que já existe, com o
-Admin SDK — e é o caminho recomendado, por não bloquear na decisão do
-orientador.
+Restam os itens 2 e 3. O 3 é pequeno. O 2 — o executor periódico — depende do
+plano Blaze, que ainda não foi aprovado; sem ele, **nenhum prazo desta política
+está em vigor**: o que existe é a exclusão a pedido do titular, não a exclusão
+por decurso de prazo.
 
 ## Backups: a outra metade do problema
 
@@ -82,14 +82,13 @@ e um backup de 2 anos atrás esvazia um prazo de retenção de 12 meses.
 
 ## Ordem de execução recomendada
 
-1. **Exclusão de conta** (HIGH-2), no backend que já existe. Fecha o direito do
-   titular e destrava todo o resto.
-2. **Exportação de dados** do titular — mesmo caminho, mesmo lugar.
+1. ~~Exclusão de conta~~ — 🟢 feito.
+2. ~~Exportação de dados~~ — 🟢 feito.
 3. Campo de último acesso, que é uma linha.
 4. Executor periódico dos prazos — depende de Blaze.
 5. Backups — depende de Blaze.
 
-Os três primeiros não dependem de decisão nenhuma além de tempo.
+O terceiro não depende de decisão nenhuma além de tempo.
 
 ## O que esta política não é
 

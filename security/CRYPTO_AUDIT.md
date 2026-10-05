@@ -21,9 +21,9 @@ abaixo.
 
 | | |
 |---|---|
-| 🔴 Faltando | varredura automática de segredos no CI (C-1) |
+| 🟢 Fechado depois do diagnóstico | varredura automática de segredos no CI (C-1) |
 | 🟡 Risco residual registrado | cache local do Firestore não é cifrado no aparelho (C-2) |
-| 🟡 Pendente para quando a Fase 5 ligar o cliente | TLS obrigatório na chamada ao backend (C-3) |
+| 🟢 Fechado depois do diagnóstico | TLS obrigatório na chamada ao backend (C-3) |
 | 🟢 Verificado e correto | 14 itens, listados adiante |
 
 ## 61.1 — Criptografia em trânsito
@@ -53,7 +53,20 @@ está comprometido, e o 61.19 diz o que vale aqui: criptografia não substitui
 autorização. Um token roubado continua barrado pelas Security Rules, que
 conferem `request.auth.uid`.
 
-### C-3 — TLS obrigatório na chamada ao backend 🟡
+### C-3 — TLS obrigatório na chamada ao backend 🟢
+
+> **Fechado.** O cliente HTTP existe (`lib/data/services/backend_client.dart`) e
+> a guarda é `AppEnvironmentConfig.isUrlSafe`, conferida a cada requisição.
+>
+> Vale registrar como ela quase saiu errada. A primeira versão extraía o host
+> cortando a string, e `http://localhost:80@evil.com` era **aceito** — o corte
+> no `:` devolvia `localhost`, quando o host real é `evil.com` e `localhost:80`
+> é usuário e senha. O token do usuário iria em texto claro para um terceiro. O
+> defeito só apareceu porque o teste do IPv6 (`http://[::1]:8000`) falhou e
+> obrigou a reler o analisador. Agora usa `Uri`, o mesmo analisador que abre a
+> conexão, e recusa qualquer endereço com credencial embutida.
+>
+> O texto abaixo é o diagnóstico original.
 
 O aplicativo **não conhece nenhuma URL de backend**. A varredura confirma:
 nenhum `http://` nem `https://` em `lib/`, nenhuma constante de endereço. A
@@ -408,7 +421,13 @@ Resultado: três arquivos, **nenhum deles um segredo**.
 Nenhuma chave privada, nenhuma senha, nenhuma service account em nenhum
 commit, ramo ou etiqueta. Nada a revogar, nada a reescrever do histórico.
 
-### C-1 — A varredura não é automática 🔴
+### C-1 — A varredura não é automática 🟢
+
+> **Fechado.** Job `segredos` no CI: Gitleaks sobre o histórico completo
+> (`fetch-depth: 0`) e `pip-audit --strict`. A configuração em `.gitleaks.toml`
+> tolera só o padrão `AIza…`, só nos arquivos que o Firebase gera.
+>
+> O texto abaixo é o diagnóstico original.
 
 Este resultado limpo vale para hoje e para quem fez a varredura. O próximo
 commit não é coberto por ele.
@@ -480,10 +499,10 @@ Não há necessidade clara. Nada próprio será implementado.
 
 | | Ação | Quem | Classe |
 |---|---|---|---|
-| 1 | Gitleaks + `pip-audit` no CI, bloqueando merge (C-1) | eu | 🔴 → fechável agora |
+| 1 | ~~Gitleaks + `pip-audit` no CI~~ (C-1) | — | 🟢 feito |
 | 2 | Registrar C-2 como risco aceito, com as quatro mitigações | feito neste arquivo | 🟡 |
-| 3 | Guarda de `https://` quando o cliente do backend nascer (C-3) | Fase 5 | 🟡 pendente |
-| 4 | Apagar o arquivo temporário da imagem após o envio (61.15) | eu | 🟡 pequeno |
+| 3 | ~~Guarda de `https://` no cliente do backend~~ (C-3) | — | 🟢 feito |
+| 4 | Apagar o arquivo temporário da imagem após o envio (61.15) | — | 🟡 **não feito**: a tela de resultado ainda exibe a foto a partir desse arquivo, e apagá-lo quebraria a imagem. Precisa trocar a origem da exibição antes |
 | 5 | Service account dedicada, com IAM mínimo em vez da padrão do projeto (61.20) | **Gustavo, no console** | 🟡 |
 | 6 | Primeira rotação da service account, e registrar a data aqui (61.8) | **Gustavo** | 🟢 rotina |
 | ⚪ | Fixação de certificado | **não fazer** — justificado em 61.1 | ⚪ |

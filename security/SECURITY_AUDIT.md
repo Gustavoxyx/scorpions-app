@@ -7,6 +7,80 @@
 
 ---
 
+## Situação dos achados
+
+O relatório abaixo é o diagnóstico **como foi feito**, e fica preservado: é o
+registro do que havia. Este quadro diz o que aconteceu com cada achado depois.
+
+| Achado | Situação | Onde foi fechado |
+|---|---|---|
+| **HIGH-1** cliente escreve o resultado da análise | 🟢 fechado | `serverOwnedFields()` nas regras; `toClientCreateMap()` no app; `extra: forbid` no backend |
+| **HIGH-2** não existe exclusão de conta | 🟢 fechado | `DELETE /v1/me` com cascata ordenada; tela "Meus dados" |
+| **MEDIUM-1** cache ilimitado e não limpo no logout | 🟢 fechado | teto de 40 MB; `clearPersistence()` no `signOut` |
+| **MEDIUM-2** `allowBackup` não declarado | 🟢 fechado | manifesto + `data_extraction_rules.xml` |
+| **MEDIUM-3** sem verificação de e-mail | 🟢 fechado | envio no cadastro; aviso e reenvio em "Meus dados"; `requires_verified_email` no backend |
+| **MEDIUM-4** sem proteção contra abuso de cota | 🟢 fechado | `quota.consume` em transação; regra nega escrita em `quotas` |
+| **MEDIUM-5** sem reautenticação | 🟢 fechado | `requires_recent_auth` sobre a claim `auth_time` |
+| **MEDIUM-6** CVE em dependência de desenvolvimento | 🟡 aceito | só ferramentas de teste; `npm audit --omit=dev` = 0 |
+| **LOW-1** `contentType` vem do cliente | 🟡 **parcial** | validador de bytes pronto e testado (`backend/app/images.py`); **ainda não é chamado**, porque a análise responde 503 antes de ler qualquer imagem. Entra em uso junto do modelo |
+| **LOW-2** sem política de retenção | 🟡 parcial | política escrita (`RETENTION_POLICY.md`); o executor periódico depende do plano Blaze |
+| **LOW-3** sem MFA na conta administrativa | 🔴 aberto | **ação do Gustavo**, na conta Google |
+| **LOW-4** sem audit log | 🟢 fechado | `backend/app/audit.py`; coleção fechada a todos os clientes, inclusive admin |
+
+Dois achados da auditoria de criptografia também foram fechados: **C-1**
+(varredura de segredos no CI) e **C-3** (HTTPS obrigatório na chamada ao
+backend — `AppEnvironmentConfig.isUrlSafe`).
+
+### O que continua aberto, sem eufemismo
+
+- **MFA** na conta dona do projeto. Nenhum código substitui.
+- **A release assina com a chave de depuração** — ver `docs/OPTIMIZATION_AUDIT.md`, B-2.
+- **Retenção automática e backups** dependem do plano Blaze.
+- **O backend não está publicado.** Exclusão de conta, exportação e cota
+  existem e estão testadas, mas só funcionam com `BACKEND_URL` apontando para
+  uma instância no ar. Sem ela, a tela "Meus dados" diz isso — não finge.
+- **Nenhum pentest foi feito.** As afirmações acima vêm de testes
+  automatizados, não de alguém atacando o sistema.
+
+---
+
+## Situação dos achados
+
+O relatório abaixo é o diagnóstico **como foi feito**, e fica preservado: é o
+registro do que havia. Este quadro diz o que aconteceu com cada achado depois.
+
+| Achado | Situação | Onde foi fechado |
+|---|---|---|
+| **HIGH-1** cliente escreve o resultado da análise | 🟢 fechado | `serverOwnedFields()` nas regras; `toClientCreateMap()` no app; `extra: forbid` no backend |
+| **HIGH-2** não existe exclusão de conta | 🟢 fechado | `DELETE /v1/me` com cascata ordenada; tela "Meus dados" |
+| **MEDIUM-1** cache ilimitado e não limpo no logout | 🟢 fechado | teto de 40 MB; `clearPersistence()` no `signOut` |
+| **MEDIUM-2** `allowBackup` não declarado | 🟢 fechado | manifesto + `data_extraction_rules.xml` |
+| **MEDIUM-3** sem verificação de e-mail | 🟢 fechado | envio no cadastro; aviso e reenvio em "Meus dados"; `requires_verified_email` no backend |
+| **MEDIUM-4** sem proteção contra abuso de cota | 🟢 fechado | `quota.consume` em transação; regra nega escrita em `quotas` |
+| **MEDIUM-5** sem reautenticação | 🟢 fechado | `requires_recent_auth` sobre a claim `auth_time` |
+| **MEDIUM-6** CVE em dependência de desenvolvimento | 🟡 aceito | só ferramentas de teste; `npm audit --omit=dev` = 0 |
+| **LOW-1** `contentType` vem do cliente | 🟡 **parcial** | validador de bytes pronto e testado (`backend/app/images.py`); **ainda não é chamado**, porque a análise responde 503 antes de ler qualquer imagem. Entra em uso junto do modelo |
+| **LOW-2** sem política de retenção | 🟡 parcial | política escrita (`RETENTION_POLICY.md`); o executor periódico depende do plano Blaze |
+| **LOW-3** sem MFA na conta administrativa | 🔴 aberto | **ação do Gustavo**, na conta Google |
+| **LOW-4** sem audit log | 🟢 fechado | `backend/app/audit.py`; coleção fechada a todos os clientes, inclusive admin |
+
+Dois achados da auditoria de criptografia também foram fechados: **C-1**
+(varredura de segredos no CI) e **C-3** (HTTPS obrigatório na chamada ao
+backend — `AppEnvironmentConfig.isUrlSafe`).
+
+### O que continua aberto, sem eufemismo
+
+- **MFA** na conta dona do projeto. Nenhum código substitui.
+- **A release assina com a chave de depuração** — ver `docs/OPTIMIZATION_AUDIT.md`, B-2.
+- **Retenção automática e backups** dependem do plano Blaze.
+- **O backend não está publicado.** Exclusão de conta, exportação e cota
+  existem e estão testadas, mas só funcionam com `BACKEND_URL` apontando para
+  uma instância no ar. Sem ela, a tela "Meus dados" diz isso — não finge.
+- **Nenhum pentest foi feito.** As afirmações acima vêm de testes
+  automatizados, não de alguém atacando o sistema.
+
+---
+
 ## Sumário
 
 | Severidade | Quantidade |

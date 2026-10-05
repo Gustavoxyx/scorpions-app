@@ -59,11 +59,17 @@ autenticado **não** é autorizado.
 | Pedir análise de 1.000 vistas | 🟢 recusado — teto de 2 vistas |
 | Enviar arquivo de 100 MB | 🟢 recusado — 8 MB na regra do Storage |
 | Enviar `.exe` renomeado para `.jpg` | 🟡 `contentType` vem do cliente e pode mentir — LOW-1. O conteúdo real não é validado no servidor |
-| Gerar 10.000 análises e estourar a cota | 🔴 **consegue** — MEDIUM-4 |
+| Gerar 10.000 análises e estourar a cota | 🟢 negado — 60 por dia, contado em transação no servidor; 429 com `Retry-After` |
+| Zerar o próprio contador de cota | 🟢 negado — a regra nega escrita em `users/{uid}/quotas` a todo cliente |
 
-**Pior caso hoje:** esgotar a cota do projeto. `maxIdentificationsPerDay = 60`
-existe como constante e **ninguém a aplica** — nem o aplicativo, nem as regras.
-O comentário no código diz isso em voz alta, de propósito.
+**Pior caso hoje:** enviar um arquivo que mente sobre o próprio tipo (LOW-1).
+Ele fica num caminho privado e nada o executa. O validador de bytes existe e
+está testado, mas só será chamado quando a inferência ler as imagens.
+
+O limite de uso, que no diagnóstico era a pior lacuna, passou a ser aplicado no
+servidor. Uma ressalva honesta: ele limita **análises**, não **envios ao
+Storage** — um cliente adulterado ainda pode enviar imagens sem pedir análise.
+O teto de 8 MB por arquivo limita o custo de cada envio, não o número deles.
 
 ## T-3 — Conta de usuário comprometida
 
@@ -73,7 +79,7 @@ O atacante tem a senha de alguém.
 |---|---|
 | Alcança | tudo o que aquele usuário alcança: o próprio histórico, as próprias fotos |
 | 🟢 Não alcança | dados de outros usuários, nem recursos administrativos |
-| 🟡 Lacuna | **não há reautenticação** para operação sensível (MEDIUM-5). Hoje não existe operação sensível no aplicativo, então a lacuna é latente — quando a exclusão de conta existir (HIGH-2), ela precisa pedir a senha de novo |
+| 🟢 Fechado | a exclusão de conta exige senha apresentada nos últimos 5 minutos — conferido no servidor pela claim `auth_time`, que não se move numa renovação silenciosa de token (MEDIUM-5). Uma senha roubada ainda basta; um aparelho destravado ou um token roubado, não |
 | 🟢 Mitigação ativa | `check_revoked=True` no backend: se a senha for trocada, o token em uso deixa de valer |
 
 ## T-4 — Conta administrativa comprometida
@@ -84,7 +90,7 @@ O atacante tem a senha de alguém.
 |---|---|
 | Alcança | tudo que o papel `admin` permite nas regras |
 | 🔴 Lacuna | **sem MFA** (LOW-3). Uma senha é tudo que separa o atacante do papel de admin |
-| 🔴 Lacuna | **sem audit log** (LOW-4). Um admin comprometido lê dados de usuários e nada registra |
+| 🟡 Parcial | o audit log existe e registra o acesso à fila de revisão pelo backend. **Mas** um admin que leia direto pelo Firestore, com as regras permitindo, não passa pelo backend e não é registrado. Fechar isso exige tirar a leitura administrativa das regras e passá-la toda pelo servidor — trabalho da fase de revisão humana |
 | 🟢 Mitigação | o papel é lido do Firestore no servidor, não enviado pelo cliente; `Role.parse` falha para `user` |
 | 🟡 Agravante registrado | a conta do Gustavo é `admin` **e** dono do projeto Firebase. Comprometê-la entrega o console, que está acima de qualquer regra |
 
@@ -99,7 +105,7 @@ código supera isso.
 | Alcança | o repositório, e o console do Firebase se a sessão estiver aberta |
 | 🟢 Mitigação | **nenhum segredo no repositório** — varredura do histórico completo em `CRYPTO_AUDIT.md` (61.21). Clonar o repositório não dá acesso a nada |
 | 🟢 Mitigação | a service account vive só em variável de ambiente do provedor, nunca em arquivo |
-| 🔴 Lacuna | sem varredura automática de segredos no CI (C-1). Um segredo commitado por engano não é detectado |
+| 🟢 Fechado | Gitleaks sobre o histórico completo a cada push, mais `pip-audit --strict` (C-1) |
 | 🟡 Realidade | esta é uma máquina de uso pessoal, com Smart App Control ativo. Não há separação entre ambiente de desenvolvimento e uso cotidiano. Risco aceito, de um TCC individual |
 
 ## T-6 — Terceiro comprometido
@@ -131,7 +137,8 @@ Aparelho com root, infectado ou com depuração habilitada.
 
 | | |
 |---|---|
-| 🔴 **Pior lacuna conhecida** | nenhum limite de taxa em lugar nenhum — MEDIUM-4 |
+| 🟢 Fechado | 60 análises por dia por usuário, em transação, falhando **fechado** se o contador estiver indisponível (MEDIUM-4) |
+| 🟡 Resta | não há limite por IP nem para `login`/`register` além do que o Firebase Auth aplica por conta própria |
 | 🟡 Parcial | App Check atesta que a requisição vem de instalação legítima do aplicativo. Reduz script, **não** limita o aplicativo real em laço |
 | 🟢 Limite estrutural | o backend recusa mais de 2 vistas por análise, e o Storage recusa acima de 8 MB. Isso limita o custo **por** requisição, não o número delas |
 | 🟢 Limite acidental | `POST /v1/analyses` responde 503 — não há modelo para abusar ainda |
@@ -172,20 +179,20 @@ do Firebase já entrega.
 
 | | Lacuna | Atacante | Gravidade | Onde está registrada |
 |---|---|---|---|---|
-| 1 | Sem limite de taxa | T-2, T-8 | 🔴 quando o modelo existir | MEDIUM-4 |
-| 2 | Sem exclusão de conta | — (é direito do titular, não ataque) | 🔴 | HIGH-2 |
-| 3 | Sem MFA no admin | T-4 | 🔴 | LOW-3 |
-| 4 | Sem audit log | T-4 | 🟡 | LOW-4 |
-| 5 | Sem varredura de segredos no CI | T-5 | 🔴 fechável agora | C-1 |
+| 1 | ~~Sem limite de taxa~~ | T-2, T-8 | 🟢 fechado | MEDIUM-4 |
+| 2 | ~~Sem exclusão de conta~~ | — | 🟢 fechado; falta publicar o backend | HIGH-2 |
+| 3 | Sem MFA no admin | T-4 | 🔴 **aberto — ação do Gustavo** | LOW-3 |
+| 4 | Leitura administrativa direta não passa pelo audit log | T-4 | 🟡 | LOW-4 |
+| 5 | ~~Sem varredura de segredos no CI~~ | T-5 | 🟢 fechado | C-1 |
 | 6 | `contentType` não validado no servidor | T-2 | 🟡 | LOW-1 |
 | 7 | Cache local não cifrado | T-7 | 🟡 risco aceito | C-2 |
-| 8 | Sem verificação de e-mail | T-1, T-8 | 🟡 | MEDIUM-3 |
+| 8 | ~~Sem verificação de e-mail~~ | T-1, T-8 | 🟢 fechado | MEDIUM-3 |
 | 9 | Sem política de retenção | — | 🔴 antes de produção | `RETENTION_POLICY.md` |
 
 ## O que este modelo não cobre
 
 - **Nenhum teste de intrusão foi feito.** As colunas "resultado" acima vêm de
-  ler as regras e de 94 testes automatizados (60 de regras, 34 do backend), não
+  ler as regras e de testes automatizados (72 de regras, 164 do backend), não
   de alguém atacando o sistema de verdade.
 - Ataques à infraestrutura do Google estão fora do alcance de qualquer controle
   deste projeto.

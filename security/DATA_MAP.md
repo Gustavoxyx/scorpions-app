@@ -80,7 +80,7 @@ o dado.
 | Enviado a terceiros? | **não.** Nenhuma API externa é chamada. As fotos não saem do Google Cloud |
 | Usado para treinar modelo? | **não automaticamente.** Ver FASE 15 e a seção adiante |
 | Pode ser anonimizada? | parcialmente — o EXIF já é removido; o conteúdo da imagem não é anonimizável |
-| Pode ser excluída? | 🔴 **não há caminho para isso hoje** — ver pendência abaixo |
+| Pode ser excluída? | 🟢 sim — `DELETE /v1/me` apaga `users/{uid}/**` no Storage, **antes** de qualquer outra coisa |
 | Retenção | 🔴 **indefinida** — ver `RETENTION_POLICY.md` |
 
 ### Identificações
@@ -131,6 +131,80 @@ A terceira linha é importante e honesta: o Google registra IP e uid nas
 requisições, e isso é tratamento de dado pessoal que acontece por usarmos a
 plataforma dele. Está em `THIRD_PARTY_PROCESSORS.md`.
 
+### Contador de uso diário
+
+Firestore `users/{uid}/quotas/{dia}`. Criado pelo backend antes de cada análise.
+
+| Campo | Pessoal? | Finalidade | Retenção |
+|---|---|---|---|
+| `count` | não por si; ligado ao `uid` pelo caminho | limitar análises por dia (MEDIUM-4) | apagado na exclusão da conta; sem expiração automática hoje |
+| `day`, `updatedAt` | não | chave do dia em UTC; carimbo do servidor | idem |
+
+Leitura: o dono. **Escrita: ninguém pelo cliente** — quem pudesse gravar aqui
+zeraria o próprio limite.
+
+### Registro de auditoria
+
+Firestore `auditLogs/{id}`. Escrito só pelo backend.
+
+| Campo | Pessoal? | Por que existe |
+|---|---|---|
+| `actorUid` | **sim** (identificador) | é o ponto inteiro do registro: quem fez |
+| `action`, `outcome`, `resource` | não | o que foi feito e como terminou |
+| `counts` | não | quantos itens — nunca quais |
+| `requestId`, `at` | não | ligação com o log técnico; horário **do servidor** |
+
+Deliberadamente **não** contém e-mail, nome, URL, caminho de arquivo nem
+conteúdo de documento — verificado por teste. Ele concentra a atividade de todos
+os usuários, e por isso é o alvo mais valioso do banco; guardar menos é
+guardá-lo melhor.
+
+Fechado a **todos** os clientes, inclusive administradores: o papel que ele
+audita não pode ser o papel que o apaga.
+
+**Uma tensão registrada:** quando alguém exclui a conta, a entrada
+`account.deleted` continua, com o `actorUid`. É dado pessoal que sobrevive à
+exclusão, de propósito — sem ela não haveria como demonstrar que a exclusão
+aconteceu. O `uid` de uma conta apagada já não aponta para nada no sistema, mas
+a retenção de 24 meses proposta para o audit log precisa de validação jurídica.
+
+### Contador de uso diário
+
+Firestore `users/{uid}/quotas/{dia}`. Criado pelo backend antes de cada análise.
+
+| Campo | Pessoal? | Finalidade | Retenção |
+|---|---|---|---|
+| `count` | não por si; ligado ao `uid` pelo caminho | limitar análises por dia (MEDIUM-4) | apagado na exclusão da conta; sem expiração automática hoje |
+| `day`, `updatedAt` | não | chave do dia em UTC; carimbo do servidor | idem |
+
+Leitura: o dono. **Escrita: ninguém pelo cliente** — quem pudesse gravar aqui
+zeraria o próprio limite.
+
+### Registro de auditoria
+
+Firestore `auditLogs/{id}`. Escrito só pelo backend.
+
+| Campo | Pessoal? | Por que existe |
+|---|---|---|
+| `actorUid` | **sim** (identificador) | é o ponto inteiro do registro: quem fez |
+| `action`, `outcome`, `resource` | não | o que foi feito e como terminou |
+| `counts` | não | quantos itens — nunca quais |
+| `requestId`, `at` | não | ligação com o log técnico; horário **do servidor** |
+
+Deliberadamente **não** contém e-mail, nome, URL, caminho de arquivo nem
+conteúdo de documento — verificado por teste. Ele concentra a atividade de todos
+os usuários, e por isso é o alvo mais valioso do banco; guardar menos é
+guardá-lo melhor.
+
+Fechado a **todos** os clientes, inclusive administradores: o papel que ele
+audita não pode ser o papel que o apaga.
+
+**Uma tensão registrada:** quando alguém exclui a conta, a entrada
+`account.deleted` continua, com o `actorUid`. É dado pessoal que sobrevive à
+exclusão, de propósito — sem ela não haveria como demonstrar que a exclusão
+aconteceu. O `uid` de uma conta apagada já não aponta para nada no sistema, mas
+a retenção de 24 meses proposta para o audit log precisa de validação jurídica.
+
 ### Dados que **não existem** ainda
 
 Para não dar a impressão de que o sistema é maior do que é:
@@ -140,7 +214,6 @@ Para não dar a impressão de que o sistema é maior do que é:
 | Fila de revisão humana | estrutura prevista; `GET /v1/review-queue` devolve lista vazia |
 | `reviewedBy`, `reviewedAt`, `humanSpeciesId` | campos existem no modelo e nas regras; nunca preenchidos |
 | Resultado de modelo | **nenhum modelo existe.** `POST /v1/analyses` responde 503 |
-| Audit log | não existe — LOW-4 na auditoria de segurança |
 | Dataset de treinamento | não existe |
 | Backups | não existem |
 
@@ -225,14 +298,16 @@ precisa de avaliação jurídica. Está marcada em `PRIVACY.md`.
 
 | | Pendência | Gravidade |
 |---|---|---|
-| 1 | **Não existe exclusão de conta.** O titular não consegue apagar os próprios dados — Art. 18 da LGPD. É o HIGH-2 da auditoria de segurança | 🔴 |
+| 1 | ~~Não existe exclusão de conta~~ — 🟢 implementada. Falta **publicar o backend** para um usuário real exercê-la | 🟡 |
 | 2 | **Nenhuma política de retenção.** Foto e identificação ficam para sempre, por omissão, não por decisão | 🔴 |
-| 3 | **Não existe exportação de dados.** O titular não consegue obter o que é dele em formato legível — Art. 18, V | 🟡 |
+| 3 | ~~Não existe exportação de dados~~ — 🟢 implementada, mesma ressalva do item 1 | 🟡 |
 | 4 | **Não existe política de privacidade publicada** nem tela de consentimento | 🔴 antes de produção |
-| 5 | Sem verificação de e-mail: o `email` armazenado pode não pertencer a quem cadastrou | 🟡 (MEDIUM-3) |
-| 6 | Sem audit log: acesso administrativo a dado pessoal não deixa rastro | 🟡 (LOW-4) |
+| 5 | ~~Sem verificação de e-mail~~ — 🟢 link enviado no cadastro, com aviso e reenvio | — |
+| 6 | ~~Sem audit log~~ — 🟢 implementado | — |
 
-As quatro primeiras são bloqueadoras para produção com usuários reais. **Nenhuma
+As pendências 2 e 4 continuam bloqueadoras para produção com usuários reais, e
+as duas precisam de decisão que não é de código (plano Blaze; validação
+jurídica). **Nenhuma
 delas bloqueia o TCC**, que é demonstração com dados do próprio autor — mas a
 diferença entre as duas situações precisa estar escrita, e está.
 
