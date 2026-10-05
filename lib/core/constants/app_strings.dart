@@ -1,8 +1,9 @@
 /// Fonte única de todo o texto visível ao usuário.
 ///
-/// Nenhuma tela declara literais. Quando a Fase 2 introduzir localização, esta
-/// classe vira a implementação `pt_BR` de uma interface gerada por `intl` e as
-/// telas não mudam.
+/// Nenhuma tela declara literais. O aplicativo é monolíngue em português do
+/// Brasil, e localização não está no escopo; se entrar, esta classe vira a
+/// implementação `pt_BR` de uma interface gerada por `intl` e as telas não
+/// mudam.
 abstract final class AppStrings {
   // -- Genéricos -------------------------------------------------------------
   static const String continueLabel = 'Continuar';

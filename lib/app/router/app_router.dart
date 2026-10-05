@@ -224,9 +224,10 @@ abstract final class AppRouter {
   /// mundo para o splash — e o endereço original se perderia. Guardamos ele
   /// aqui para que o splash saiba para onde ir quando a animação terminar.
   ///
-  /// Passa a importar de verdade na Fase 3, quando notificações e links de
-  /// espécie compartilhada abrirem o app numa tela específica: sem isto, todo
-  /// link cairia na Home.
+  /// Ainda não há link externo que abra o aplicativo numa tela específica —
+  /// notificações e compartilhamento de espécie são de fases adiante. O
+  /// mecanismo já está de pé porque o custo de tê-lo agora é uma variável, e
+  /// o de descobrir sua falta depois é todo link caindo na Home.
   static String? _pendingDeepLink;
 
   /// Consome o destino pendente. O splash chama uma única vez.

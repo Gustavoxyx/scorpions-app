@@ -14,8 +14,9 @@ class AuthFailure implements Exception {
 
 /// Contrato de autenticação.
 ///
-/// Fase 1: [MockAuthRepository] (memória).
-/// Fase 3: `FirebaseAuthRepository` implementando esta mesma interface.
+/// Duas implementações, escolhidas por `DATA_SOURCE` em `dependencies.dart`:
+/// [MockAuthRepository] (memória) e `FirebaseAuthRepository` (Authentication
+/// real). A interface é a mesma, e nenhuma tela sabe qual está em uso.
 abstract interface class AuthRepository {
   /// Emite o usuário corrente e `null` quando não há sessão.
   Stream<AppUser?> authStateChanges();

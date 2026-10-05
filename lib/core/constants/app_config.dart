@@ -25,9 +25,10 @@ abstract final class AppConfig {
   ///
   ///     flutter run --dart-define=DEMO_AUTOLOGIN=true
   ///
-  /// Não é um atalho de autenticação: quando o Firebase entrar na Fase 3, o
-  /// caminho real de login passa a ser o único que produz uma sessão válida, e
-  /// este sinalizador continua servindo apenas ao repositório simulado.
+  /// Não é um atalho de autenticação. Com o Firebase no ar (Fase 3), o
+  /// caminho real de login é o único que produz uma sessão válida; este
+  /// sinalizador serve apenas ao repositório simulado, e `DATA_SOURCE=firebase`
+  /// o ignora.
   static const bool demoAutoLogin = bool.fromEnvironment('DEMO_AUTOLOGIN');
 
   /// Tema inicial do build: `light` (padrão), `dark` ou `system`.

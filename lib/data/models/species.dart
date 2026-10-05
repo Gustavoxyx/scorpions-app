@@ -65,9 +65,9 @@ class MorphologyFeature {
 
 /// Espécie do catálogo científico.
 ///
-/// Modelo puro: sem dependência de Firestore, de rede ou de widgets. Na Fase 3
-/// ganha `fromMap`/`toMap` e passa a ser hidratado pelo `FirestoreSpecies-
-/// Repository` sem que a UI perceba.
+/// Modelo puro: sem dependência de Firestore, de rede ou de widgets. O
+/// `FirestoreSpeciesRepository` o hidrata por `fromMap`/`toMap`, e a UI não
+/// distingue uma espécie vinda do banco de uma vinda do catálogo simulado.
 @immutable
 class Species {
   const Species({
@@ -122,9 +122,10 @@ class Species {
 
   /// Modelo tridimensional da espécie.
   ///
-  /// Nulo em toda a Fase 2 — nenhum arquivo 3D foi empacotado. O campo existe
-  /// para que a UI já pergunte [has3DModel] e as telas de resultado e de ficha
-  /// não precisem ser reconstruídas quando os modelos chegarem.
+  /// Sempre nulo: nenhum arquivo 3D foi empacotado nem hospedado até aqui. O
+  /// campo existe para que a UI já pergunte [has3DModel] e as telas de
+  /// resultado e de ficha não precisem ser reconstruídas quando os modelos
+  /// chegarem (§41).
   final SpeciesModel3D? model3D;
 
   /// Se `false`, as telas mostram o espaço reservado ao 3D em estado inativo,
@@ -166,9 +167,9 @@ class Species {
           .toList(growable: false),
       accentSeed: FirestoreCodec.integer(map['accentSeed']),
       imageAsset: FirestoreCodec.stringOrNull(map['imageUrl']),
-      // Fase 3: `model3dUrl` é lido mas nunca preenchido — a estrutura existe,
-      // o visualizador não (§41). Quando existir, basta o documento trazer a
-      // URL e construir o SpeciesModel3D aqui.
+      // `model3dUrl` existe no documento e é sempre nulo: a estrutura está
+      // pronta, o visualizador não (§41). Quando existir, basta o documento
+      // trazer a URL e construir o SpeciesModel3D aqui.
       model3D: null,
     );
   }

@@ -1,8 +1,9 @@
 /// Validações de formulário de interface.
 ///
-/// São validações de UX, não de segurança: a autoridade sobre credenciais é do
-/// backend (Fase 3). Aqui o objetivo é dar feedback imediato e evitar viagens
-/// desnecessárias à rede.
+/// São validações de UX, não de segurança: quem decide sobre credenciais é o
+/// Firebase Authentication, e quem decide sobre dados são as Security Rules.
+/// Aqui o objetivo é dar resposta imediata e evitar viagens desnecessárias à
+/// rede — nada do que esta classe aprova passa a ser confiável por isso.
 abstract final class Validators {
   static final RegExp _email = RegExp(
     r'^[\w.!#$%&*+/=?^`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'

@@ -53,7 +53,7 @@ flutter run
 
 > **Windows:** o build de apps com plugins exige *Developer Mode* ligado
 > (`start ms-settings:developers`) para suporte a symlinks. Isso afeta apenas o
-> build/run — `flutter analyze` e `flutter test` funcionam sem ele.
+> build/run — `flutter analyze` funciona sem ele.
 
 Verificação estática e testes:
 
@@ -61,6 +61,13 @@ Verificação estática e testes:
 flutter analyze
 flutter test
 ```
+
+> **Se `flutter test` falhar no Windows** com *"Uma política de Controle de
+> Aplicativo bloqueou este arquivo"*, é o Controle Inteligente de Aplicativos
+> recusando o `flutter_tester.exe` por assinatura — não é defeito do projeto.
+> Desligá-lo é irreversível sem reinstalar o sistema, então a verificação roda
+> na integração contínua (abaixo), onde o runner é Linux. `flutter analyze` e
+> `flutter build` continuam funcionando localmente porque rodam na `dart.exe`.
 
 ### Modos de dados (§22, §42)
 
@@ -239,6 +246,26 @@ Isso existe porque um `RenderFlex overflow` não quebra o build: aparece como
 faixa listrada em execução e **desaparece silenciosamente em release**. Na Fase 2
 este teste encontrou dois estouros reais em 320dp que nenhuma inspeção visual
 havia pego.
+
+### Integração contínua
+
+`.github/workflows/verificacao.yml` roda a cada envio, em dois trabalhos:
+
+| Trabalho | O que roda | Hoje |
+| --- | --- | --- |
+| Análise e testes do app | `flutter analyze` + `flutter test` | **156** testes |
+| Security Rules no emulador | Firestore + Storage + Auth emulados | **53** testes |
+
+O segundo começa gerando `firebase/test/contract-shapes.json` **a partir dos
+modelos de produção** e só então roda as regras contra ele. A diferença não é
+cerimônia: enquanto os testes de regra usavam documentos escritos à mão, eles
+ficavam verdes com o cadastro quebrado — `AppUser.toCreateMap()` não enviava
+`role`, a regra exigia, e todo cadastro teria dado `permission-denied` em
+produção. Teste que inventa o dado testa a si mesmo.
+
+Para o TCC isso tem um efeito colateral útil: a prova de que os testes passam
+deixa de ser "rodei na minha máquina" e vira um registro público, com data e
+número de testes, que a banca pode conferir.
 
 ## 12. Pipeline de imagem (Fase 4)
 

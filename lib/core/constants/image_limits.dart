@@ -103,10 +103,18 @@ abstract final class ImageLimits {
 
   /// Identificações por usuário por dia.
   ///
-  /// Não há imposição de servidor ainda — hoje é um freio de cliente, e um
-  /// cliente adulterado o ignora. A contenção real pertence às regras ou a uma
-  /// Function, e a constante existe aqui para que esse dia não precise caçar
-  /// o número em lugar nenhum.
+  /// **Ninguém aplica este número hoje** — nem o aplicativo, nem as regras.
+  /// Ele é a decisão de produto registrada, não um limite em vigor, e esta
+  /// frase existe porque a versão anterior deste comentário dizia que havia
+  /// "um freio de cliente". Não havia. Um comentário que descreve um
+  /// mecanismo inexistente é pior que nenhum: a próxima pessoa confia nele.
+  ///
+  /// Por que não há um freio de cliente: ele custaria uma consulta por envio
+  /// e um cliente adulterado o ignoraria, então pagaria o preço sem entregar
+  /// a proteção. A contenção que vale precisa ser de servidor — um contador
+  /// em `users/{uid}` incrementado na criação e conferido pela regra, ou uma
+  /// Cloud Function. A constante fica aqui para que esse dia encontre o
+  /// número já decidido.
   static const int maxIdentificationsPerDay = 60;
 
   /// Envios simultâneos. Acima disso a fila é do aparelho, não da rede.

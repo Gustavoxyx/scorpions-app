@@ -7,8 +7,12 @@ import 'pressable.dart';
 
 /// Avatar do usuário.
 ///
-/// Sem foto (Fase 1), desenha as iniciais sobre a superfície do tema. Quando o
-/// Storage entrar na Fase 3, basta preencher `AppUser.avatarUrl`.
+/// Desenha as iniciais sobre a superfície do tema.
+///
+/// Não há foto de perfil: `AppUser.avatarUrl` existe e está sempre nulo,
+/// porque o aplicativo nunca pede nem envia retrato de usuário. Se um dia
+/// pedir, é só preencher o campo — mas isso é decisão de produto e de
+/// privacidade, não uma lacuna de implementação.
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
     super.key,

@@ -5,9 +5,13 @@ import 'mock_species.dart';
 /// ============================================================================
 /// DADOS SIMULADOS — FASE 1
 /// ============================================================================
-/// Histórico pré-carregado para que a aba correspondente não nasça vazia. Na
-/// Fase 3 este arquivo some e o `IdentificationRepository` passa a consultar a
-/// coleção `identifications` do usuário no Firestore.
+/// Histórico pré-carregado para que a aba correspondente não nasça vazia.
+///
+/// Previa-se que a Fase 3 o aposentasse. Não aconteceu, e por um motivo que
+/// se mostrou bom: `DATA_SOURCE=mock` continua sendo como o aplicativo roda
+/// sem rede, sem conta e sem cota — em desktop, em teste e na demonstração
+/// que não pode depender do Wi-Fi da banca. Com Firebase
+/// (`FirestoreIdentificationRepository`) este arquivo nunca é tocado.
 /// ============================================================================
 abstract final class MockHistory {
   static DateTime _daysAgo(int days, {int hour = 14, int minute = 20}) {
