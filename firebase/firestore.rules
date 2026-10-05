@@ -152,19 +152,27 @@ service cloud.firestore {
       // escreveria qualquer coisa. `imageQuality` é o caso mais delicado: é um
       // mapa aberto, e sem limite de tamanho viraria um depósito de dados
       // arbitrários dentro de um documento que o dono pode escrever à vontade.
+      //
+      // ATENÇÃO ao uso de `get(campo, padrão)`. Escrever
+      // `request.resource.data.thumbnailUrl == null` **não** funciona: acessar
+      // uma propriedade que não existe no mapa lança erro de avaliação em vez
+      // de devolver nulo, e a escrita inteira é recusada. Foi assim que a
+      // primeira versão desta função quebrou a criação de identificações — o
+      // emulador apontou "Property thumbnailUrl is undefined on object".
+      //
+      // Campos opcionais precisam ser lidos com valor padrão, sempre.
       function isValidPipelineFields() {
-        return (request.resource.data.thumbnailUrl == null
-                || (request.resource.data.thumbnailUrl is string
-                    && request.resource.data.thumbnailUrl.size() <= 512))
-          && (request.resource.data.pipelineVersion == null
-              || (request.resource.data.pipelineVersion is string
-                  && request.resource.data.pipelineVersion.size() <= 64))
-          && (request.resource.data.errorCode == null
-              || (request.resource.data.errorCode is string
-                  && request.resource.data.errorCode.size() <= 64))
-          && (request.resource.data.imageQuality == null
-              || (request.resource.data.imageQuality is map
-                  && request.resource.data.imageQuality.keys().size() <= 12));
+        let d = request.resource.data;
+        let thumb = d.get('thumbnailUrl', null);
+        let versao = d.get('pipelineVersion', null);
+        let erro = d.get('errorCode', null);
+        let qualidade = d.get('imageQuality', null);
+
+        return (thumb == null || (thumb is string && thumb.size() <= 512))
+          && (versao == null || (versao is string && versao.size() <= 64))
+          && (erro == null || (erro is string && erro.size() <= 64))
+          && (qualidade == null
+              || (qualidade is map && qualidade.keys().size() <= 12));
       }
 
       function isValidIdentification() {
