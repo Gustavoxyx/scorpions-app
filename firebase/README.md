@@ -127,3 +127,43 @@ E publicar as regras:
 ```bash
 firebase deploy --only firestore:rules,storage:rules,firestore:indexes
 ```
+
+E publicar as regras **no projeto certo** — o alias `default` aponta para o
+emulador de propósito, então sem `--project production` o deploy não chega à
+nuvem:
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes --project production
+```
+
+## Semear o catálogo na nuvem
+
+O catálogo vive em `species-data.mjs` e tem dois destinos.
+
+| Destino | Comando | Como escreve |
+| --- | --- | --- |
+| Emulador | `npm run seed` | `withSecurityRulesDisabled` — só alcança emulador |
+| Nuvem | `npm run seed:cloud` | Login de verdade, regras valendo |
+
+O da nuvem entra pela porta da frente: faz login com e-mail e senha pelo mesmo
+SDK do aplicativo e deixa as Security Rules decidirem. Não existe service
+account neste repositório, e não vai existir (§32) — um arquivo desses ignora
+as regras e, se vazar, entrega o banco inteiro.
+
+A consequência é que a conta precisa estar com `role: 'admin'` **durante** a
+execução:
+
+1. No console do Firebase: Firestore → `users` → seu documento → `role` para
+   `admin`.
+2. `cd firebase && npm run seed:cloud:dry` — ensaio, não escreve nada. Serve
+   para confirmar o projeto, o login e o papel antes de tocar no banco.
+3. `npm run seed:cloud` — pede confirmação digitada antes de gravar.
+4. **Devolva `role` para `user`.** Conta de uso diário com privilégio de
+   administrador é exatamente o que as regras existem para evitar.
+
+A senha é lida com o eco desligado: não entra no histórico do shell, não vira
+variável de ambiente e não aparece em lista de processos.
+
+O script escreve em lote único — ou entram as cinco espécies, ou não entra
+nenhuma. Catálogo pela metade é pior que catálogo vazio, porque parece
+completo.
