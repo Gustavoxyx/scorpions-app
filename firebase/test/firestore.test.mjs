@@ -398,6 +398,112 @@ describe('identifications', () => {
 });
 
 // =============================================================================
+// users/{uid}/quotas/{dia}  — o contador de uso diário
+// =============================================================================
+//
+// A razão de estes testes existirem: o limite de 60 análises por dia só vale
+// enquanto o cliente não puder mexer no contador. Se ele puder zerar, o
+// MEDIUM-4 volta por uma porta diferente da que foi fechada.
+describe('cota diária', () => {
+  it('o dono lê a própria cota', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05')),
+    );
+  });
+
+  it('NÃO lê a cota de outra pessoa', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(getDoc(doc(db, 'users', BOB, 'quotas', '2026-10-05')));
+  });
+
+  it('o dono NÃO zera a própria cota', async () => {
+    // O teste mais importante deste bloco. Quem pode escrever aqui não tem
+    // limite de uso nenhum.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05'), { count: 0 }),
+    );
+  });
+
+  it('o dono NÃO diminui o contador por atualização', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05'), { count: 1 }),
+    );
+  });
+
+  it('o dono NÃO apaga o documento da cota', async () => {
+    // Apagar é equivalente a zerar: na próxima leitura o contador começa do
+    // zero porque o documento não existe.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      deleteDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05')),
+    );
+  });
+
+  it('nem o admin escreve na cota de alguém', async () => {
+    // Quem escreve é o backend, com o Admin SDK, que ignora estas regras.
+    // Nenhum caminho de cliente, para nenhum papel.
+    const db = asUser(testEnv, ADMIN, ADMIN_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05'), { count: 0 }),
+    );
+  });
+
+  it('quem não está autenticado não lê cota', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      getDoc(doc(db, 'users', ALICE, 'quotas', '2026-10-05')),
+    );
+  });
+});
+
+// =============================================================================
+// auditLogs — fechado para todos, inclusive admin
+// =============================================================================
+describe('audit log', () => {
+  it('o usuário comum NÃO lê o audit log', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(getDoc(doc(db, 'auditLogs', 'qualquer')));
+  });
+
+  it('o ADMIN também NÃO lê o audit log', async () => {
+    // Deliberado, e o ponto do bloco.
+    //
+    // O pior cenário por credencial é uma conta administrativa comprometida —
+    // e o audit log é justamente o que registraria essa conta agindo. Deixá-lo
+    // alcançável pelo papel que ele audita entregaria ao atacante a capacidade
+    // de apagar o próprio rastro.
+    const db = asUser(testEnv, ADMIN, ADMIN_EMAIL).firestore();
+    await assertFails(getDoc(doc(db, 'auditLogs', 'qualquer')));
+  });
+
+  it('ninguém escreve no audit log pelo cliente', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'auditLogs', 'forjado'), {
+        action: 'account.deleted',
+        actorUid: BOB,
+        outcome: 'success',
+      }),
+    );
+  });
+
+  it('o admin NÃO apaga entradas do audit log', async () => {
+    // "Não apagar evidências durante um incidente" é regra do plano de
+    // resposta. Aqui ela é imposta, não pedida.
+    const db = asUser(testEnv, ADMIN, ADMIN_EMAIL).firestore();
+    await assertFails(deleteDoc(doc(db, 'auditLogs', 'qualquer')));
+  });
+
+  it('o usuário NÃO lista o audit log', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(getDocs(collection(db, 'auditLogs')));
+  });
+});
+
+// =============================================================================
 // Coleções não previstas
 // =============================================================================
 describe('negação final', () => {

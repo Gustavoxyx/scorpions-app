@@ -110,7 +110,60 @@ service cloud.firestore {
       // Exclusão de conta (§37) envolve Authentication, Storage e as
       // identificações — precisa de privilégio administrativo e roda em
       // backend. Nunca a partir do aplicativo.
+      //
+      // Existe agora: `DELETE /v1/me` no backend de inferência, com
+      // reautenticação exigida e cascata na ordem segura. Fecha o HIGH-2 da
+      // auditoria e o Art. 18, VI da LGPD. A regra continua `false` porque o
+      // caminho é o backend, com o Admin SDK — não o cliente.
       allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{userId}/quotas/{dia}  (MEDIUM-4 da auditoria)
+    // -------------------------------------------------------------------------
+    // O contador de uso diário, que o backend incrementa numa transação antes
+    // de cada análise.
+    //
+    // POR QUE A REGRA PRECISA EXISTIR, SE A NEGAÇÃO FINAL JÁ COBRE
+    // As regras do Firestore **não** descem para subcoleções: `users/{userId}`
+    // não alcança `users/{userId}/quotas/{dia}`, e o `match /{document=**}` do
+    // fim já negaria tudo aqui. Mas depender disso é frágil — basta alguém
+    // declarar uma regra recursiva em `users` e o contador fica escrevível.
+    //
+    // E escrevível é o que não pode ser. Se o cliente pudesse gravar aqui, ele
+    // zeraria o próprio contador e o limite de uso deixaria de existir — o
+    // MEDIUM-4 voltaria por uma porta diferente da que foi fechada.
+    //
+    // Então: leitura para o dono (a tela pode mostrar quanto resta, e
+    // `GET /v1/me/quota` existe para o caso autoritativo), escrita para
+    // **ninguém**.
+    match /users/{userId}/quotas/{dia} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // auditLogs/{logId}  (LOW-4 da auditoria, FASE 24 do briefing)
+    // -------------------------------------------------------------------------
+    // Registro de quem fez o quê nas operações críticas.
+    //
+    // FECHADO PARA TODOS, INCLUSIVE ADMIN — e isso é deliberado.
+    //
+    // O modelo de ameaças marca em T-4 que o pior cenário por credencial é uma
+    // conta administrativa comprometida. O audit log é justamente o que
+    // registraria essa conta agindo. Deixá-lo alcançável pelo papel que ele
+    // audita entregaria ao atacante a capacidade de apagar o próprio rastro — e
+    // o plano de resposta a incidentes tem uma regra que não se quebra: não
+    // apagar evidência.
+    //
+    // Quem escreve é o backend, com o Admin SDK, que ignora estas regras. Quem
+    // lê, numa investigação, é o console do Firebase — onde o acesso é do dono
+    // do projeto e fica registrado pelo Google.
+    //
+    // Se um dia houver um painel de auditoria no aplicativo, ele lê pelo
+    // backend, com papel conferido no servidor. Não daqui.
+    match /auditLogs/{logId} {
+      allow read, write: if false;
     }
 
     // -------------------------------------------------------------------------
