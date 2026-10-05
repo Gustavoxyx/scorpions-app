@@ -234,10 +234,10 @@ void main() {
     });
 
     test('sem predição nenhuma, devolve não avaliado — nunca um palpite', () {
-      final FusedPrediction f = fusao.fuse(<ViewPrediction>[
+      final FusedPrediction f = fusao.fuse(const <ViewPrediction>[
         ViewPrediction(
           captureType: CaptureType.topView,
-          candidates: const <SpeciesCandidate>[],
+          candidates: <SpeciesCandidate>[],
           modelVersion: 'teste-v1',
         ),
       ]);
