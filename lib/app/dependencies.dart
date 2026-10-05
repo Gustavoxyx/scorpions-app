@@ -1,4 +1,5 @@
 import '../core/constants/app_environment.dart';
+import '../data/repositories/account_repository.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/firebase_auth_repository.dart';
 import '../data/repositories/firestore_identification_repository.dart';
@@ -6,6 +7,7 @@ import '../data/repositories/firestore_species_repository.dart';
 import '../data/repositories/identification_repository.dart';
 import '../data/repositories/mock_auth_repository.dart';
 import '../data/repositories/species_repository.dart';
+import '../data/services/backend_client.dart';
 import '../data/services/connectivity_service.dart';
 import '../data/services/identification_pipeline.dart';
 import '../data/services/image_processing_service.dart';
@@ -34,8 +36,35 @@ class AppDependencies {
     required this.imageUploadService,
     required this.permissionService,
     required this.pipeline,
+    required this.accountRepository,
     required this.mode,
   });
+
+  /// Operações sobre a própria conta: exclusão, exportação, cota.
+  ///
+  /// Depende do backend próprio, não do Firebase direto — a cascata de exclusão
+  /// precisa do Admin SDK, que as Security Rules não concedem ao cliente. Sem
+  /// `BACKEND_URL` configurado, vira [UnavailableAccountRepository], que falha
+  /// dizendo o motivo em vez de fingir que apagou.
+  final AccountRepository accountRepository;
+
+  /// Escolhe o repositório de conta conforme o backend estar configurado.
+  ///
+  /// Num lugar só, porque as três fábricas precisam da mesma decisão — e porque
+  /// a guarda de HTTPS mora dentro de `AppEnvironmentConfig.hasBackend`
+  /// (achado C-3 da auditoria de criptografia). Repetir a escolha seria repetir
+  /// a chance de esquecê-la.
+  static AccountRepository _resolveAccount(AuthRepository auth) {
+    if (!AppEnvironmentConfig.hasBackend) {
+      return const UnavailableAccountRepository();
+    }
+    return BackendAccountRepository(
+      HttpBackendClient(
+        idToken: ({bool forceRefresh = false}) =>
+            auth.idToken(forceRefresh: forceRefresh),
+      ),
+    );
+  }
 
   /// Monta o conjunto de dependências do modo configurado no build.
   factory AppDependencies.resolve() {
@@ -63,6 +92,7 @@ class AppDependencies {
           uploader: uploader,
           connectivity: const AlwaysOnlineConnectivityService(),
         ),
+        accountRepository: _resolveAccount(auth),
         mode: mode,
       );
     }
@@ -89,6 +119,7 @@ class AppDependencies {
         uploader: uploader,
         connectivity: PlatformConnectivityService(),
       ),
+      accountRepository: _resolveAccount(auth),
       mode: mode,
     );
   }
@@ -111,6 +142,10 @@ class AppDependencies {
         uploader: const NoopImageUploadService(),
         connectivity: const AlwaysOnlineConnectivityService(),
       ),
+      // Sempre indisponível, e não `_resolveAccount`: um teste de widget não
+      // deve falar com backend nenhum, e um `BACKEND_URL` presente no ambiente
+      // de quem roda os testes mudaria o comportamento deles sem ninguém pedir.
+      accountRepository: const UnavailableAccountRepository(),
       mode: DataSourceMode.mock,
     );
   }

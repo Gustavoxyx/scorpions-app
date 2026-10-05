@@ -10,6 +10,7 @@ import '../data/services/camera_service.dart';
 import '../data/services/gallery_service.dart';
 import '../data/services/identification_service.dart';
 import '../state/auth_controller.dart';
+import '../state/account_controller.dart';
 import '../state/catalog_controller.dart';
 import '../state/history_controller.dart';
 import '../state/identification_controller.dart';
@@ -63,6 +64,10 @@ class _ScorpionsAppState extends State<ScorpionsApp> {
   );
   late final CatalogController _catalog =
       CatalogController(_deps.speciesRepository);
+  late final AccountController _account = AccountController(
+    account: _deps.accountRepository,
+    auth: _deps.authRepository,
+  );
 
   late final GoRouter _router = AppRouter.create(
     auth: _auth,
@@ -77,6 +82,7 @@ class _ScorpionsAppState extends State<ScorpionsApp> {
     _identification.dispose();
     _history.dispose();
     _catalog.dispose();
+    _account.dispose();
     _router.dispose();
     super.dispose();
   }
@@ -93,6 +99,7 @@ class _ScorpionsAppState extends State<ScorpionsApp> {
         ),
         ChangeNotifierProvider<HistoryController>.value(value: _history),
         ChangeNotifierProvider<CatalogController>.value(value: _catalog),
+        ChangeNotifierProvider<AccountController>.value(value: _account),
 
         // Serviços sem estado observável entram como Provider simples para que
         // as telas de câmera os obtenham por injeção, não por instanciação.

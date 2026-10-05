@@ -56,6 +56,23 @@ class _AuthFalso implements AuthRepository {
   @override
   Future<void> signOut() async => _user = null;
 
+  // O pipeline de identificação não usa nenhum destes. Lançar em vez de
+  // devolver um valor plausível é deliberado: se um dia ele passar a chamá-los,
+  // o teste quebra e diz onde — em vez de passar silenciosamente sobre um dublê
+  // que inventou uma resposta.
+  @override
+  Future<void> sendEmailVerification() => throw UnimplementedError();
+
+  @override
+  Future<AppUser?> reload() => throw UnimplementedError();
+
+  @override
+  Future<void> reauthenticate(String password) => throw UnimplementedError();
+
+  @override
+  Future<String?> idToken({bool forceRefresh = false}) =>
+      throw UnimplementedError();
+
   @override
   void dispose() {}
 }

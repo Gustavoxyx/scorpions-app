@@ -20,6 +20,9 @@ abstract final class AppRoutes {
   static const String settings = '/profile/settings';
   static const String about = '/profile/about';
 
+  /// Exportar e excluir os próprios dados (LGPD, Art. 18).
+  static const String accountData = '/profile/data';
+
   // Fluxo de identificação, empilhado sobre as abas.
   static const String capture = '/capture';
   static const String confirmPhoto = '/capture/confirm';

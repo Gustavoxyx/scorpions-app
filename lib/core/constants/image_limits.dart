@@ -103,18 +103,25 @@ abstract final class ImageLimits {
 
   /// Identificações por usuário por dia.
   ///
-  /// **Ninguém aplica este número hoje** — nem o aplicativo, nem as regras.
-  /// Ele é a decisão de produto registrada, não um limite em vigor, e esta
-  /// frase existe porque a versão anterior deste comentário dizia que havia
-  /// "um freio de cliente". Não havia. Um comentário que descreve um
-  /// mecanismo inexistente é pior que nenhum: a próxima pessoa confia nele.
+  /// **Quem aplica este número é o servidor**, não este arquivo.
   ///
-  /// Por que não há um freio de cliente: ele custaria uma consulta por envio
-  /// e um cliente adulterado o ignoraria, então pagaria o preço sem entregar
-  /// a proteção. A contenção que vale precisa ser de servidor — um contador
-  /// em `users/{uid}` incrementado na criação e conferido pela regra, ou uma
-  /// Cloud Function. A constante fica aqui para que esse dia encontre o
-  /// número já decidido.
+  /// O backend conta em `users/{uid}/quotas/{dia}`, dentro de uma transação,
+  /// antes de cada análise (`backend/app/quota.py`), e a regra do Firestore
+  /// nega escrita nesse caminho a todo cliente — senão bastaria zerar o próprio
+  /// contador. O número de lá vem da variável `MAX_ANALYSES_PER_DAY`; este
+  /// daqui é o **espelho**, para a tela poder dizer "restam N" sem inventar.
+  ///
+  /// Este comentário já mentiu duas vezes, e vale deixar o histórico: primeiro
+  /// dizia que havia "um freio de cliente", e não havia; depois passou a dizer
+  /// que ninguém aplicava o limite, o que foi verdade até o backend ganhar a
+  /// cota. Comentário que descreve mecanismo é o primeiro a ficar para trás.
+  ///
+  /// Continua não havendo freio de cliente, e pelo mesmo motivo de antes: ele
+  /// custaria uma consulta por envio e um cliente adulterado o ignoraria.
+  ///
+  /// Limite do que isto cobre: são **análises**, não envios ao Storage. Um
+  /// cliente adulterado ainda pode enviar imagens sem pedir análise; o que
+  /// limita isso é só o teto de [maxBytes] por arquivo.
   static const int maxIdentificationsPerDay = 60;
 
   /// Envios simultâneos. Acima disso a fila é do aparelho, não da rede.

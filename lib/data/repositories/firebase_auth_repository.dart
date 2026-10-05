@@ -104,6 +104,19 @@ class FirebaseAuthRepository implements AuthRepository {
         // que o documento precise ser recriado.
         await user.updateDisplayName(name.trim());
 
+        // Pede a confirmação do endereço já no cadastro (MEDIUM-3).
+        //
+        // Dentro de um `try` próprio, e sem propagar: se o envio falhar — cota
+        // de e-mail do projeto, rede oscilando —, a conta já foi criada e a
+        // pessoa precisa conseguir entrar. Falhar o cadastro aqui deixaria uma
+        // conta existente atrás de uma tela dizendo que ela não foi criada. O
+        // aviso em "Meus dados" continua lá, com o botão de reenviar.
+        try {
+          await user.sendEmailVerification();
+        } catch (_) {
+          // Deliberadamente silencioso — ver acima.
+        }
+
         return _ensureProfile(user, fallbackName: name.trim());
       });
     } finally {
@@ -133,6 +146,76 @@ class FirebaseAuthRepository implements AuthRepository {
       // ativo repopularia o que acabou de ser apagado.
       await FirebaseBootstrap.clearLocalCache();
     });
+  }
+
+  @override
+  Future<void> sendEmailVerification() {
+    return FirebaseErrorMapper.guard(() async {
+      final fb.User? user = _auth.currentUser;
+      if (user == null) {
+        throw const AppFailure(
+          kind: FailureKind.authentication,
+          message: 'Entre na sua conta para reenviar a confirmação.',
+          code: 'no-current-user',
+        );
+      }
+      if (user.emailVerified) return;
+      await user.sendEmailVerification();
+    });
+  }
+
+  @override
+  Future<AppUser?> reload() {
+    return FirebaseErrorMapper.guard(() async {
+      final fb.User? user = _auth.currentUser;
+      if (user == null) return null;
+
+      // A confirmação acontece FORA do aplicativo, num navegador. O objeto em
+      // memória não sabe, e sem este `reload` a tela continuaria pedindo para
+      // confirmar algo já confirmado — o tipo de aviso que ensina o usuário a
+      // ignorar avisos.
+      await user.reload();
+
+      final fb.User? atualizado = _auth.currentUser;
+      if (atualizado == null) return null;
+
+      final AppUser perfil = await _ensureProfile(
+        atualizado,
+        fallbackName: _nameFromEmail(atualizado.email),
+      );
+      _emit(perfil);
+      return perfil;
+    });
+  }
+
+  @override
+  Future<void> reauthenticate(String password) {
+    return FirebaseErrorMapper.guard(() async {
+      final fb.User? user = _auth.currentUser;
+      final String? email = user?.email;
+      if (user == null || email == null || email.isEmpty) {
+        throw const AppFailure(
+          kind: FailureKind.authentication,
+          message: 'Entre na sua conta para continuar.',
+          code: 'no-current-user',
+        );
+      }
+
+      // O efeito que importa não é o retorno: é mover a claim `auth_time` do
+      // próximo ID token. É nela que o servidor olha para decidir se a senha
+      // foi apresentada agora, e é o que permite exigir confirmação para uma
+      // operação irreversível sem inventar um mecanismo de sessão próprio.
+      await user.reauthenticateWithCredential(
+        fb.EmailAuthProvider.credential(email: email, password: password),
+      );
+    });
+  }
+
+  @override
+  Future<String?> idToken({bool forceRefresh = false}) {
+    return FirebaseErrorMapper.guard(
+      () async => _auth.currentUser?.getIdToken(forceRefresh),
+    );
   }
 
   @override
@@ -171,8 +254,16 @@ class FirebaseAuthRepository implements AuthRepository {
     final DocumentReference<Map<String, dynamic>> ref = _users.doc(user.uid);
     final DocumentSnapshot<Map<String, dynamic>> snapshot = await ref.get();
 
+    // `emailVerified` é sobreposto ao que veio do documento, nos dois retornos.
+    //
+    // O documento não guarda esse campo — de propósito, para o cliente não ter
+    // o que forjar — e `fromMap` o deixa em `false`. Sem esta sobreposição, o
+    // aviso de "confirme seu e-mail" apareceria para sempre, inclusive para
+    // quem já confirmou: exatamente o aviso-que-não-some que ensina a ignorar
+    // avisos. Quem sabe a resposta é o Authentication.
     if (snapshot.exists) {
-      return AppUser.fromMap(user.uid, snapshot.data() ?? <String, dynamic>{});
+      return AppUser.fromMap(user.uid, snapshot.data() ?? <String, dynamic>{})
+          .copyWith(emailVerified: user.emailVerified);
     }
 
     final AppUser profile = AppUser(
@@ -187,7 +278,8 @@ class FirebaseAuthRepository implements AuthRepository {
 
     // Relê para receber os carimbos resolvidos pelo servidor.
     final DocumentSnapshot<Map<String, dynamic>> created = await ref.get();
-    return AppUser.fromMap(user.uid, created.data() ?? <String, dynamic>{});
+    return AppUser.fromMap(user.uid, created.data() ?? <String, dynamic>{})
+        .copyWith(emailVerified: user.emailVerified);
   }
 
   /// Perfil mínimo derivado apenas do Authentication.
@@ -202,6 +294,9 @@ class FirebaseAuthRepository implements AuthRepository {
           : _nameFromEmail(user.email),
       email: user.email ?? '',
       role: UserRole.user,
+      // Vem do Authentication, que é quem conhece este fato. Guardá-lo no
+      // documento criaria uma segunda verdade, escrevível pelo cliente.
+      emailVerified: user.emailVerified,
     );
   }
 

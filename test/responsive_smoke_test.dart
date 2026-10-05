@@ -7,6 +7,7 @@ import 'package:scorpions/core/theme/app_theme.dart';
 import 'package:scorpions/data/mock/mock_history.dart';
 import 'package:scorpions/data/mock/mock_species.dart';
 import 'package:scorpions/data/models/identification.dart';
+import 'package:scorpions/data/repositories/account_repository.dart';
 import 'package:scorpions/data/repositories/identification_repository.dart';
 import 'package:scorpions/data/repositories/mock_auth_repository.dart';
 import 'package:scorpions/data/repositories/species_repository.dart';
@@ -20,8 +21,10 @@ import 'package:scorpions/features/identification/result_page.dart';
 import 'package:scorpions/features/identification/unidentified_page.dart';
 import 'package:scorpions/features/onboarding/onboarding_page.dart';
 import 'package:scorpions/features/profile/profile_page.dart';
+import 'package:scorpions/features/settings/account_data_page.dart';
 import 'package:scorpions/features/settings/settings_page.dart';
 import 'package:scorpions/features/species/species_detail_page.dart';
+import 'package:scorpions/state/account_controller.dart';
 import 'package:scorpions/state/auth_controller.dart';
 import 'package:scorpions/state/catalog_controller.dart';
 import 'package:scorpions/state/history_controller.dart';
@@ -91,6 +94,15 @@ void main() {
         ChangeNotifierProvider<CatalogController>(
           create: (_) => CatalogController(const MockSpeciesRepository()),
         ),
+        // Sem backend: a tela de dados precisa se comportar também quando o
+        // serviço não está configurado, que é o caso de todo build sem
+        // `BACKEND_URL` e de toda demonstração.
+        ChangeNotifierProvider<AccountController>(
+          create: (_) => AccountController(
+            account: const UnavailableAccountRepository(),
+            auth: auth,
+          ),
+        ),
       ],
       child: MaterialApp(
         theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
@@ -146,6 +158,7 @@ void main() {
       'Catálogo': const CatalogPage(),
       'Perfil': const ProfilePage(),
       'Configurações': const SettingsPage(),
+      'Meus dados': const AccountDataPage(),
       'Dicas de foto': const PhotoTipsPage(),
       'Ficha da espécie': SpeciesDetailPage(
         speciesId: MockSpecies.tityusSerrulatus.id,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/router/app_routes.dart';
 import '../../core/constants/app_config.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_colors.dart';
@@ -74,6 +76,26 @@ class SettingsPage extends StatelessWidget {
             child: _LanguageSelector(
               value: settings.language,
               onChanged: settings.setLanguage,
+            ),
+          ),
+          AppSpacing.gapXxl,
+
+          // Dados pessoais.
+          //
+          // Fica antes de "Legal" de propósito: estes são controles que
+          // funcionam, e um direito escondido abaixo de dois itens "em breve"
+          // é um direito pela metade (§37 do briefing).
+          AppSection(
+            title: 'Meus dados',
+            icon: Icons.shield_outlined,
+            child: AppTileGroup(
+              children: <Widget>[
+                AppNavTile(
+                  label: 'Exportar ou excluir meus dados',
+                  icon: Icons.manage_accounts_outlined,
+                  onTap: () => context.push(AppRoutes.accountData),
+                ),
+              ],
             ),
           ),
           AppSpacing.gapXxl,

@@ -110,6 +110,51 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Reenvia o link de confirmação do e-mail (MEDIUM-3 da auditoria).
+  ///
+  /// Devolve se o envio aconteceu. Não muda o estado de autenticação: a pessoa
+  /// continua dentro do aplicativo enquanto o e-mail não é confirmado. Bloquear
+  /// o uso por isso puniria quem ainda não abriu a caixa de entrada — e o risco
+  /// real do endereço não confirmado está na recuperação de senha, não no uso.
+  Future<bool> sendEmailVerification() async {
+    try {
+      await _repository.sendEmailVerification();
+      return true;
+    } on AppFailure catch (e) {
+      _set(AuthError(e.message));
+      return false;
+    } catch (_) {
+      _set(const AuthError('Não foi possível enviar o link. Tente de novo.'));
+      return false;
+    }
+  }
+
+  /// Recarrega o usuário do servidor, para saber se o e-mail já foi confirmado.
+  ///
+  /// A confirmação acontece **fora** do aplicativo, num navegador, e o objeto em
+  /// memória não sabe. Sem isto, o aviso continuaria na tela depois de
+  /// confirmado — e um aviso que não some ensina o usuário a ignorar avisos.
+  Future<void> reloadUser() async {
+    try {
+      final AppUser? atualizado = await _repository.reload();
+      if (atualizado != null) _set(AuthAuthenticated(atualizado));
+    } catch (_) {
+      // Falhar aqui não merece mensagem: o usuário pediu uma verificação, não
+      // uma operação. O aviso simplesmente continua na tela.
+    }
+  }
+
+  /// Confirma a senha de quem já está autenticado, para operação irreversível.
+  ///
+  /// Repassa a falha em vez de engolir: quem chama é o fluxo de exclusão de
+  /// conta, que precisa distinguir "senha errada" de "deu outro problema".
+  Future<void> reauthenticate(String password) =>
+      _repository.reauthenticate(password);
+
+  /// O ID token, para as chamadas ao backend.
+  Future<String?> idToken({bool forceRefresh = false}) =>
+      _repository.idToken(forceRefresh: forceRefresh);
+
   /// Limpa a mensagem de erro quando o usuário volta a editar o formulário.
   void clearError() {
     if (_state is AuthError) _set(const AuthUnauthenticated());

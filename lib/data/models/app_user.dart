@@ -25,6 +25,7 @@ class AppUser {
     this.speciesSeenCount = 0,
     this.memberSince,
     this.updatedAt,
+    this.emailVerified = false,
   });
 
   /// UID do Firebase Authentication. É a chave do documento no Firestore.
@@ -52,6 +53,19 @@ class AppUser {
   /// `createdAt` do documento.
   final DateTime? memberSince;
   final DateTime? updatedAt;
+
+  /// Se o endereço de e-mail foi confirmado pelo link enviado.
+  ///
+  /// # Vem do Authentication, nunca do Firestore
+  /// É propriedade da identidade, e quem a conhece é o Firebase Authentication.
+  /// Guardá-la no documento `users/{uid}` criaria uma segunda verdade que o
+  /// cliente poderia tentar escrever — e a regra teria de defender um campo que
+  /// não precisa existir.
+  ///
+  /// Nasce `false`: falhar para o menos confiável. Uma conta recém-criada tem
+  /// e-mail não confirmado, e é exatamente o estado em que o aviso precisa
+  /// aparecer (MEDIUM-3 da auditoria).
+  final bool emailVerified;
 
   String get firstName => Formatters.firstName(name);
   String get initials => Formatters.initials(name);
@@ -109,6 +123,7 @@ class AppUser {
     String? avatarUrl,
     int? identificationCount,
     int? speciesSeenCount,
+    bool? emailVerified,
   }) {
     return AppUser(
       id: id,
@@ -120,6 +135,7 @@ class AppUser {
       speciesSeenCount: speciesSeenCount ?? this.speciesSeenCount,
       memberSince: memberSince,
       updatedAt: updatedAt,
+      emailVerified: emailVerified ?? this.emailVerified,
     );
   }
 }

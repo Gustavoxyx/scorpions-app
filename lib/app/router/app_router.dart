@@ -18,6 +18,7 @@ import '../../features/identification/unidentified_page.dart';
 import '../../features/onboarding/onboarding_page.dart';
 import '../../features/profile/about_page.dart';
 import '../../features/profile/profile_page.dart';
+import '../../features/settings/account_data_page.dart';
 import '../../features/settings/settings_page.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/species/species_detail_page.dart';
@@ -152,6 +153,13 @@ abstract final class AppRouter {
                       pageBuilder: (BuildContext c, GoRouterState s) =>
                           AppTransitions.forward(
                               key: s.pageKey, child: const AboutPage()),
+                    ),
+                    GoRoute(
+                      path: 'data',
+                      parentNavigatorKey: _rootKey,
+                      pageBuilder: (BuildContext c, GoRouterState s) =>
+                          AppTransitions.forward(
+                              key: s.pageKey, child: const AccountDataPage()),
                     ),
                   ],
                 ),
