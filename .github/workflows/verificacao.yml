@@ -1,0 +1,98 @@
+# Verificação automática do Scorpions.
+#
+# Por que existe
+# --------------
+# O Smart App Control do Windows passou a bloquear o `flutter_tester.exe` na
+# máquina de desenvolvimento, e com ele os testes deixaram de rodar localmente.
+# Desligar essa proteção é irreversível sem reinstalar o sistema, então a
+# verificação passou a acontecer aqui — onde o runner é Linux e o bloqueio não
+# existe.
+#
+# O efeito colateral é bom para o TCC: a prova de que os testes passam deixa de
+# ser "rodei na minha máquina" e vira um registro público, com data e número de
+# testes, que a banca pode conferir.
+
+name: Verificação
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # permite rodar sob demanda pelo site do GitHub
+
+# Um push novo cancela a execução anterior do mesmo ramo: o que importa é o
+# estado atual, não a fila.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Fixa a versão para que o CI reproduza a máquina de desenvolvimento. Subir
+  # o Flutter passa a ser uma decisão escrita neste arquivo, e não um efeito
+  # colateral de o runner ter atualizado sozinho.
+  FLUTTER_VERSION: '3.44.6'
+
+jobs:
+  aplicativo:
+    name: Análise e testes do app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Dependências
+        run: flutter pub get
+
+      - name: Análise estática
+        run: flutter analyze
+
+      - name: Testes
+        run: flutter test --reporter expanded
+
+  regras:
+    name: Security Rules no emulador
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # O emulador do Firestore roda na JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+
+      - name: Dependências do app
+        run: flutter pub get
+
+      # Este passo é o que dá sentido ao job. As formas de contrato são
+      # GERADAS a partir dos modelos de produção, não escritas à mão — foi
+      # assim que um bug real apareceu: o mapa de criação de usuário não
+      # trazia `role`, a regra exigia, e os testes passavam porque inventavam
+      # o documento em vez de usar o de verdade.
+      - name: Gerar as formas de contrato
+        run: flutter test test/contract_shapes_test.dart
+
+      - name: Dependências do Firebase
+        working-directory: firebase
+        run: npm ci
+
+      - name: Regras contra o emulador
+        working-directory: firebase
+        run: npx --yes firebase-tools@latest emulators:exec --project demo-scorpions --only firestore,storage,auth "node --test --test-concurrency=1 test/firestore.test.mjs test/storage.test.mjs test/contract.test.mjs"
