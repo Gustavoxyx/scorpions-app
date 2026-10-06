@@ -220,12 +220,51 @@ service cloud.firestore {
         let versao = d.get('pipelineVersion', null);
         let erro = d.get('errorCode', null);
         let qualidade = d.get('imageQuality', null);
+        let vistas = d.get('viewCount', null);
 
         return (thumb == null || (thumb is string && thumb.size() <= 512))
           && (versao == null || (versao is string && versao.size() <= 64))
           && (erro == null || (erro is string && erro.size() <= 64))
           && (qualidade == null
-              || (qualidade is map && qualidade.keys().size() <= 12));
+              || (qualidade is map && qualidade.keys().size() <= 12))
+          // Uma ou duas fotografias. O backend recusa a terceira, e a regra do
+          // Storage não aceita nome de arquivo para ela.
+          && (vistas == null || vistas == 1 || vistas == 2)
+          && isValidSecondaryView();
+      }
+
+      // A segunda fotografia da identificação (Fase 5).
+      //
+      // É dado do CLIENTE — ele capturou, mediu e enviou — e por isso é
+      // validado como os outros campos do pipeline: forma fechada e tamanhos
+      // limitados.
+      //
+      // `hasOnly` é o que importa aqui. Sem ele o mapa seria aberto, e um
+      // cliente adulterado guardaria ali `confidence: 0.99` ou qualquer outra
+      // conclusão de análise, um nível abaixo de onde `serverOwnedFields()`
+      // olha. O que as duas fotos disseram juntas vai em `fusion`, que só o
+      // servidor escreve.
+      function isValidSecondaryView() {
+        let v = request.resource.data.get('secondaryView', null);
+
+        return v == null || (
+          v is map
+          && v.keys().hasOnly(['captureType', 'instructionId', 'imageUrl',
+                               'thumbnailUrl', 'imageQuality'])
+          && v.get('captureType', '') is string
+          && v.get('captureType', '').size() <= 32
+          && v.get('instructionId', '') is string
+          && v.get('instructionId', '').size() <= 64
+          && (v.get('imageUrl', null) == null
+              || (v.get('imageUrl', null) is string
+                  && v.get('imageUrl', null).size() <= 512))
+          && (v.get('thumbnailUrl', null) == null
+              || (v.get('thumbnailUrl', null) is string
+                  && v.get('thumbnailUrl', null).size() <= 512))
+          && (v.get('imageQuality', null) == null
+              || (v.get('imageQuality', null) is map
+                  && v.get('imageQuality', null).keys().size() <= 12))
+        );
       }
 
       // Campos que SÓ O SERVIDOR escreve (auditoria HIGH-1).
@@ -246,9 +285,14 @@ service cloud.firestore {
       // ignora as regras por natureza. Então proibi-los aqui não atrapalha o
       // servidor e fecha o cliente.
       function serverOwnedFields() {
+        // `fusion` é o que a análise concluiu sobre o CONJUNTO das vistas:
+        // se concordaram, quanto, e qual foi a decisão. Forjar "as duas fotos
+        // concordaram" é o mesmo ataque de forjar `confidence: 0.99`, por
+        // outro campo.
         return ['speciesId', 'scientificName', 'confidence', 'species',
                 'alternatives', 'rejectionReason', 'modelVersion',
-                'reviewedBy', 'reviewedAt', 'humanSpeciesId', 'isMock'];
+                'reviewedBy', 'reviewedAt', 'humanSpeciesId', 'isMock',
+                'fusion'];
       }
 
       // A criação nasce sempre em `processing`.

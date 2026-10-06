@@ -7,7 +7,9 @@ import 'package:scorpions/data/mock/mock_species.dart';
 import 'package:scorpions/data/models/app_user.dart';
 import 'package:scorpions/data/models/captured_image.dart';
 import 'package:scorpions/data/models/firestore_codec.dart';
+import 'package:scorpions/data/models/capture_instruction.dart';
 import 'package:scorpions/data/models/identification.dart';
+import 'package:scorpions/data/models/secondary_view.dart';
 import 'package:scorpions/data/models/species.dart';
 
 /// Exporta as formas de documento que o aplicativo realmente grava.
@@ -55,6 +57,40 @@ void main() {
       reason: RejectionReason.noScorpionDetected,
     ).copyWith(userId: 'uid-alice');
 
+    // -- identifications/{id}: duas vistas (Fase 5) ---------------------------
+    //
+    // Construída pelo MESMO caminho que o pipeline usa: `processing` com a
+    // segunda vista, e depois os caminhos anexados. É a forma que de fato
+    // chega às regras, e não uma que este teste imagina.
+    final IdentificationResult twoViews = IdentificationResult.processing(
+      id: 'ident-3',
+      image: CapturedImage.simulated(),
+      userId: 'uid-alice',
+      createdAt: fixedDate,
+      imageQuality: const <String, Object?>{'quality': 'good', 'score': 0.84},
+      secondaryView: SecondaryView(
+        captureType: CaptureType.tail,
+        instructionId: ImageCaptureInstruction.tail.id,
+        image: CapturedImage.simulated(),
+        imageUrl: 'users/uid-alice/identifications/ident-3/processed-2.jpg',
+        thumbnailUrl: 'users/uid-alice/identifications/ident-3/thumbnail-2.jpg',
+        imageQuality: const <String, Object?>{'quality': 'acceptable'},
+      ),
+    );
+
+    // A mesma identificação, depois de uma análise: é o que o SERVIDOR grava,
+    // com `fusion`. Exportada para o lado oposto do teste.
+    final IdentificationResult twoViewsAnalysed = twoViews.copyWith(
+      multiView: const MultiViewSummary(
+        viewCount: 2,
+        agreeOnTop1: true,
+        agreement: 0.91,
+        decisionLevel: 'high_confidence',
+        reasons: <String>['uncalibrated_thresholds'],
+        thresholdsCalibrated: false,
+      ),
+    );
+
     // -- species/{id} ---------------------------------------------------------
     final Species species = MockSpecies.tityusSerrulatus;
 
@@ -71,8 +107,25 @@ void main() {
       // precisam RECUSAR esta forma quando ela vem do cliente (HIGH-1).
       'identificationServerFull': _encode(identified.toMap()),
       'identificationRejectedServerFull': _encode(rejected.toMap()),
+
+      // Duas vistas: a forma que o cliente envia precisa ser ACEITA...
+      'identificationTwoViewsClientCreate':
+          _encode(twoViews.toClientCreateMap()),
+      // ...e a que carrega `fusion` precisa ser RECUSADA vinda dele.
+      'identificationTwoViewsServerFull': _encode(twoViewsAnalysed.toMap()),
       'species': _encode(species.toMap()),
     };
+
+    // Conferido já aqui, antes do emulador: a forma que o cliente envia não
+    // carrega a conclusão da análise, e a do servidor carrega.
+    final Map<String, Object?> doCliente =
+        shapes['identificationTwoViewsClientCreate']! as Map<String, Object?>;
+    final Map<String, Object?> doServidor =
+        shapes['identificationTwoViewsServerFull']! as Map<String, Object?>;
+    expect(doCliente.containsKey('fusion'), isFalse);
+    expect(doCliente['viewCount'], 2);
+    expect(doCliente['secondaryView'], isNotNull);
+    expect(doServidor['fusion'], isNotNull);
 
     final File output =
         File('firebase/test/contract-shapes.json');

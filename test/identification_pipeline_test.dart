@@ -7,7 +7,9 @@ import 'package:image/image.dart' as img;
 
 import 'package:scorpions/data/models/app_user.dart';
 import 'package:scorpions/data/models/captured_image.dart';
+import 'package:scorpions/data/models/capture_instruction.dart';
 import 'package:scorpions/data/models/identification.dart';
+import 'package:scorpions/data/models/secondary_view.dart';
 import 'package:scorpions/data/models/identification_status.dart';
 import 'package:scorpions/data/models/image_validation.dart';
 import 'package:scorpions/data/models/processed_image.dart';
@@ -93,6 +95,7 @@ class _RepoFalso implements IdentificationRepository {
     String? imageUrl,
     String? thumbnailUrl,
     String? errorCode,
+    SecondaryView? secondaryView,
   }) async {
     final int i = gravacoes.indexWhere((IdentificationResult r) => r.id == id);
     if (i < 0) return;
@@ -100,6 +103,7 @@ class _RepoFalso implements IdentificationRepository {
       imageUrl: imageUrl,
       thumbnailUrl: thumbnailUrl,
       errorCode: errorCode,
+      secondaryView: secondaryView,
     ));
   }
 
@@ -130,20 +134,48 @@ class _UploaderFalso implements ImageUploadService {
   final List<String> caminhosPedidos = <String>[];
   final List<String> apagados = <String>[];
 
+  /// Qual vista cada pedido de envio trouxe, na ordem em que chegaram.
+  final List<int> vistasPedidas = <int>[];
+
+  /// Quantos envios estavam em andamento ao mesmo tempo, no pico.
+  ///
+  /// É como o teste de paralelismo distingue "as duas subiram juntas" de "uma
+  /// esperou a outra": com envio sequencial, este número nunca passa de 1.
+  int picoSimultaneo = 0;
+  int _emAndamento = 0;
+
+  /// Faz a segunda vista falhar, deixando a primeira passar.
+  bool falharSegundaVista = false;
+
   @override
   Future<UploadedImagePaths> uploadAll({
     required ProcessedImage image,
     required String userId,
     required String identificationId,
+    int viewIndex = 1,
   }) async {
     final String prefixo = 'users/$userId/identifications/$identificationId';
     caminhosPedidos.add(prefixo);
+    vistasPedidas.add(viewIndex);
+
+    _emAndamento++;
+    if (_emAndamento > picoSimultaneo) picoSimultaneo = _emAndamento;
+    // Cede a vez: sem isto os dois "envios" terminariam um depois do outro no
+    // mesmo turno do laço de eventos, e o pico seria 1 mesmo em paralelo.
+    await Future<void>.delayed(Duration.zero);
+    _emAndamento--;
+
     if (lancar != null) throw lancar!;
     if (falharTudo) return const UploadedImagePaths.none();
+    if (viewIndex == 2 && falharSegundaVista) {
+      return const UploadedImagePaths.none();
+    }
+
+    final String sufixo = viewIndex == 2 ? '-2' : '';
     return UploadedImagePaths(
-      original: '$prefixo/original.jpg',
-      processed: '$prefixo/processed.jpg',
-      thumbnail: '$prefixo/thumbnail.jpg',
+      original: '$prefixo/original$sufixo.jpg',
+      processed: '$prefixo/processed$sufixo.jpg',
+      thumbnail: '$prefixo/thumbnail$sufixo.jpg',
     );
   }
 
@@ -368,6 +400,264 @@ void main() {
 
       expect(saida.result!.errorCode, 'upload-failed');
       expect(repo.apagados, isEmpty);
+    });
+  });
+
+  group('duas vistas (Fase 5)', () {
+    /// A segunda captura, pronta para envio, com a instrução da cauda.
+    Future<SecondaryCapture> segundaDe(
+      IdentificationPipeline p, {
+      ImageCaptureInstruction instrucao = ImageCaptureInstruction.tail,
+    }) async {
+      final CapturedImage imagem = _imagem(_foto());
+      return SecondaryCapture(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        instruction: instrucao,
+      );
+    }
+
+    test('sem segunda foto, o registro é o de sempre', () async {
+      // A garantia de compatibilidade: uma identificação de uma foto só não
+      // muda em nada por o pipeline saber lidar com duas.
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida =
+          await p.submit(image: imagem, preparation: await p.prepare(imagem));
+
+      expect(saida.result!.viewCount, 1);
+      expect(saida.result!.secondaryView, isNull);
+      expect(uploader.vistasPedidas, <int>[1]);
+    });
+
+    test('a segunda vista é registrada com o que foi PEDIDO', () async {
+      // Guardar o pedido junto do resultado é o que permite, depois, perguntar
+      // "o usuário fotografou a cauda quando pedimos a cauda?".
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      final SecondaryView segunda = saida.result!.secondaryView!;
+      expect(saida.result!.viewCount, 2);
+      expect(segunda.captureType, CaptureType.tail);
+      expect(segunda.instructionId, ImageCaptureInstruction.tail.id);
+      expect(segunda.imageQuality, isNotNull,
+          reason: 'as medidas da segunda foto também são gravadas');
+    });
+
+    test('a segunda vista já existe no registro ANTES do envio', () async {
+      // Igual à primeira: o registro nasce antes de qualquer arquivo subir,
+      // para que uma falha de rede não leve junto a informação de que houve
+      // uma segunda foto.
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      final IdentificationResult criado = repo.gravacoes.first;
+      expect(criado.secondaryView, isNotNull);
+      expect(criado.secondaryView!.imageUrl, isNull);
+      expect(criado.secondaryView!.captureType, CaptureType.tail);
+    });
+
+    test('os arquivos da segunda vista levam sufixo, na mesma pasta', () async {
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      final IdentificationResult r = saida.result!;
+      expect(r.imageUrl, endsWith('/processed.jpg'));
+      expect(r.secondaryView!.imageUrl, endsWith('/processed-2.jpg'));
+      expect(r.secondaryView!.thumbnailUrl, endsWith('/thumbnail-2.jpg'));
+
+      // Mesma pasta: apagar a identificação apaga as duas com um prefixo só.
+      String pasta(String caminho) =>
+          caminho.substring(0, caminho.lastIndexOf('/'));
+      expect(pasta(r.secondaryView!.imageUrl!), pasta(r.imageUrl!));
+    });
+
+    test('as duas vistas sobem EM PARALELO', () async {
+      // O briefing de otimização (§27) pede isto por nome. Com envio
+      // sequencial, o pico de envios simultâneos nunca passaria de 1.
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      expect(uploader.vistasPedidas, unorderedEquals(<int>[1, 2]));
+      expect(
+        uploader.picoSimultaneo,
+        2,
+        reason: 'uma vista esperou a outra terminar para começar',
+      );
+    });
+
+    test('a segunda falha, a primeira sobrevive', () async {
+      // Uma vista ruim não invalida a identificação se a outra tiver
+      // informação suficiente (§5). Uma vista que não subiu segue a mesma
+      // lógica.
+      final IdentificationPipeline p = montar();
+      uploader.falharSegundaVista = true;
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      final IdentificationResult r = saida.result!;
+      expect(r.imageUrl, endsWith('/processed.jpg'),
+          reason: 'a primeira foto subiu e precisa estar referenciada');
+      expect(r.secondaryView!.imageUrl, isNull);
+      // A segunda vista continua registrada: sabe-se que foi tirada e qual
+      // era, só não se tem o arquivo.
+      expect(r.secondaryView!.captureType, CaptureType.tail);
+      expect(repo.apagados, isEmpty, reason: 'nada é apagado por isso');
+    });
+
+    test('exceção no envio de uma vista não derruba a outra', () async {
+      // `Future.wait` propaga a primeira exceção e abandona o resto. O que
+      // impede isso aqui é cada envio capturar o próprio erro — e é o que este
+      // teste trava.
+      final _UploaderFalso quebrado = _UploaderFalso(lancar: StateError('x'));
+      final IdentificationPipeline p = montar(envio: quebrado);
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      expect(saida.cancelled, isFalse);
+      expect(saida.result!.errorCode, 'upload-failed');
+      expect(saida.result!.viewCount, 2);
+      expect(quebrado.vistasPedidas, unorderedEquals(<int>[1, 2]),
+          reason: 'as duas foram tentadas, mesmo com a primeira lançando');
+    });
+
+    test('o que o cliente grava NÃO contém conclusão de análise', () async {
+      // A segunda vista é do cliente; o que as duas fotos disseram juntas não
+      // é. `fusion` é campo de servidor (auditoria HIGH-1), e este teste
+      // garante que ele não escapa para o mapa de criação por distração.
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: await p.prepare(imagem),
+        secondary: await segundaDe(p),
+      );
+
+      final Map<String, Object?> doCliente =
+          saida.result!.toClientCreateMap();
+
+      expect(doCliente['viewCount'], 2);
+      expect(doCliente['secondaryView'], isA<Map<String, Object?>>());
+      for (final String proibido in <String>[
+        'fusion',
+        'confidence',
+        'speciesId',
+        'species',
+        'modelVersion',
+      ]) {
+        expect(doCliente.containsKey(proibido), isFalse,
+            reason: '"$proibido" é campo de servidor');
+      }
+
+      final Map<String, Object?> vista =
+          doCliente['secondaryView']! as Map<String, Object?>;
+      expect(
+        vista.keys.toSet(),
+        <String>{
+          'captureType',
+          'instructionId',
+          'imageUrl',
+          'thumbnailUrl',
+          'imageQuality',
+        },
+        reason: 'são exatamente as chaves que a Security Rules aceita',
+      );
+    });
+
+    test('cancelar com duas vistas apaga a identificação inteira', () async {
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+      final ImagePreparation prep = await p.prepare(imagem);
+      final SecondaryCapture segunda = await segundaDe(p);
+
+      final PipelineOutcome saida = await p.submit(
+        image: imagem,
+        preparation: prep,
+        secondary: segunda,
+        onStage: (PipelineStage s) {
+          if (s == PipelineStage.uploading) p.cancel();
+        },
+      );
+
+      expect(saida.cancelled, isTrue);
+      // Um `deleteFor` só, pelo id: ele cobre as duas vistas porque elas
+      // moram na mesma pasta.
+      expect(uploader.apagados, hasLength(1));
+      expect(repo.apagados, hasLength(1));
+    });
+
+    test('registro de duas vistas sobrevive a ida e volta pelo banco', () {
+      // O histórico lê o documento de volta. Se `fromMap` perdesse a segunda
+      // vista, a tela de resultado mostraria uma foto onde houve duas.
+      final Map<String, dynamic> documento = <String, dynamic>{
+        'userId': 'uid-do-dono',
+        'status': 'processing',
+        'imageUrl': 'users/u/identifications/i/processed.jpg',
+        'viewCount': 2,
+        'secondaryView': <String, dynamic>{
+          'captureType': 'tail',
+          'instructionId': 'secondary-tail',
+          'imageUrl': 'users/u/identifications/i/processed-2.jpg',
+          'thumbnailUrl': 'users/u/identifications/i/thumbnail-2.jpg',
+          'imageQuality': <String, dynamic>{'quality': 'good'},
+        },
+      };
+
+      final IdentificationResult lido =
+          IdentificationResult.fromMap('i', documento);
+
+      expect(lido.viewCount, 2);
+      expect(lido.secondaryView!.captureType, CaptureType.tail);
+      expect(lido.secondaryView!.imageUrl, endsWith('processed-2.jpg'));
+      expect(lido.secondaryView!.imageQuality!['quality'], 'good');
+    });
+
+    test('documento antigo, sem os campos novos, é lido como uma foto', () {
+      // Nenhuma migração: todo registro anterior continua válido.
+      final IdentificationResult lido = IdentificationResult.fromMap(
+        'antigo',
+        <String, dynamic>{'userId': 'u', 'status': 'processing'},
+      );
+
+      expect(lido.viewCount, 1);
+      expect(lido.secondaryView, isNull);
+      expect(lido.multiView, isNull);
     });
   });
 

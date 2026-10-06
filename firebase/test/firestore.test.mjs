@@ -247,6 +247,135 @@ describe('identifications', () => {
     );
   });
 
+  // ---------------------------------------------------------------------------
+  // A segunda fotografia (Fase 5)
+  // ---------------------------------------------------------------------------
+  const segundaVista = () => ({
+    captureType: 'tail',
+    instructionId: 'secondary-tail',
+    imageUrl: null,
+    thumbnailUrl: null,
+    imageQuality: { quality: 'good', score: 0.81 },
+  });
+
+  it('cria uma identificação com duas vistas', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'identifications', 'duas-1'), {
+        ...validDoc(ALICE),
+        viewCount: 2,
+        secondaryView: segundaVista(),
+      }),
+    );
+  });
+
+  it('NÃO esconde conclusão de análise dentro da segunda vista', async () => {
+    // O teste que justifica o `hasOnly` na regra.
+    //
+    // `serverOwnedFields()` olha as chaves do documento. Um mapa aninhado
+    // aberto seria o lugar óbvio para um cliente adulterado guardar
+    // `confidence: 0.99` um nível abaixo de onde a regra confere.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    for (const extra of [
+      { confidence: 0.99 },
+      { speciesId: 'tityus-serrulatus' },
+      { agreeOnTop1: true },
+      { qualquerCoisa: 'x' },
+    ]) {
+      await assertFails(
+        setDoc(doc(db, 'identifications', 'duas-forjada'), {
+          ...validDoc(ALICE),
+          viewCount: 2,
+          secondaryView: { ...segundaVista(), ...extra },
+        }),
+      );
+    }
+  });
+
+  it('NÃO cria com `fusion` — o que as vistas disseram juntas é do servidor', async () => {
+    // Forjar "as duas fotos concordaram" é o mesmo ataque de forjar
+    // `confidence: 0.99`, por outro campo.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'duas-fusion'), {
+        ...validDoc(ALICE),
+        viewCount: 2,
+        secondaryView: segundaVista(),
+        fusion: { agreeOnTop1: true, decisionLevel: 'high_confidence' },
+      }),
+    );
+  });
+
+  it('NÃO declara três vistas', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    for (const n of [0, 3, 99, -1, '2']) {
+      await assertFails(
+        setDoc(doc(db, 'identifications', 'duas-n'), {
+          ...validDoc(ALICE),
+          viewCount: n,
+        }),
+      );
+    }
+  });
+
+  it('NÃO aceita segunda vista com forma errada', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    for (const ruim of [
+      'tail',
+      ['tail'],
+      { ...segundaVista(), captureType: 42 },
+      { ...segundaVista(), captureType: 'x'.repeat(33) },
+      { ...segundaVista(), imageUrl: 'x'.repeat(513) },
+      { ...segundaVista(), imageQuality: 'boa' },
+    ]) {
+      await assertFails(
+        setDoc(doc(db, 'identifications', 'duas-ruim'), {
+          ...validDoc(ALICE),
+          viewCount: 2,
+          secondaryView: ruim,
+        }),
+      );
+    }
+  });
+
+  it('anexa os caminhos da segunda vista depois do envio', async () => {
+    // O segundo passo normal do pipeline: o registro nasce sem imagem e recebe
+    // os caminhos quando o envio termina.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const ref = doc(db, 'identifications', 'duas-2');
+    await setDoc(ref, {
+      ...validDoc(ALICE),
+      viewCount: 2,
+      secondaryView: segundaVista(),
+    });
+
+    await assertSucceeds(
+      updateDoc(ref, {
+        imageUrl: `users/${ALICE}/identifications/duas-2/processed.jpg`,
+        secondaryView: {
+          ...segundaVista(),
+          imageUrl: `users/${ALICE}/identifications/duas-2/processed-2.jpg`,
+          thumbnailUrl: `users/${ALICE}/identifications/duas-2/thumbnail-2.webp`,
+        },
+      }),
+    );
+  });
+
+  it('NÃO acrescenta `fusion` numa atualização', async () => {
+    // O caminho "criar limpo, reescrever depois".
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const ref = doc(db, 'identifications', 'duas-3');
+    await setDoc(ref, {
+      ...validDoc(ALICE),
+      viewCount: 2,
+      secondaryView: segundaVista(),
+    });
+
+    await assertFails(
+      updateDoc(ref, { fusion: { agreeOnTop1: true } }),
+    );
+  });
+
   it('NÃO cria com status inválido', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(

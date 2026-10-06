@@ -4,6 +4,7 @@ import 'captured_image.dart';
 import 'confidence_level.dart';
 import 'firestore_codec.dart';
 import 'identification_status.dart';
+import 'secondary_view.dart';
 import 'species.dart';
 
 /// Motivo pelo qual o sistema se recusou a responder.
@@ -90,6 +91,8 @@ class IdentificationResult {
     this.imageQuality,
     this.errorCode,
     this.pipelineVersion = pipelineV1,
+    this.secondaryView,
+    this.multiView,
   });
 
   factory IdentificationResult.identified({
@@ -163,6 +166,7 @@ class IdentificationResult {
     String? thumbnailUrl,
     Map<String, Object?>? imageQuality,
     DateTime? createdAt,
+    SecondaryView? secondaryView,
   }) {
     return IdentificationResult._(
       id: id,
@@ -177,6 +181,7 @@ class IdentificationResult {
       imageUrl: imageUrl,
       thumbnailUrl: thumbnailUrl,
       imageQuality: imageQuality,
+      secondaryView: secondaryView,
     );
   }
 
@@ -241,6 +246,21 @@ class IdentificationResult {
   /// Versão do pipeline de imagem (§26).
   final String pipelineVersion;
 
+  /// A segunda fotografia, quando houve uma. Ver [SecondaryView].
+  ///
+  /// Nula em toda identificação de uma foto só — inclusive em todas as que
+  /// existiam antes deste campo, que continuam sendo lidas sem migração.
+  final SecondaryView? secondaryView;
+
+  /// O que a análise concluiu sobre o conjunto das vistas.
+  ///
+  /// **Campo de servidor**: gravado sob `fusion`, que o cliente não consegue
+  /// escrever. Ver [MultiViewSummary].
+  final MultiViewSummary? multiView;
+
+  /// Quantas fotografias esta identificação tem.
+  int get viewCount => secondaryView == null ? 1 : 2;
+
   bool get isRejected => rejectionReason != null;
 
   SpeciesPrediction get top => predictions.first;
@@ -251,15 +271,22 @@ class IdentificationResult {
       isRejected ? ConfidenceLevel.unidentified : top.level;
 
   IdentificationResult copyWith({
+    String? id,
     String? userId,
     String? imageUrl,
     String? thumbnailUrl,
     CapturedImage? image,
     Map<String, Object?>? imageQuality,
     String? errorCode,
+    SecondaryView? secondaryView,
+    MultiViewSummary? multiView,
   }) {
     return IdentificationResult._(
-      id: id,
+      // `id` é substituível para um caso só: o modo de demonstração precisa
+      // gravar o desfecho simulado NO LUGAR do registro que o pipeline criou.
+      // Sem isso os dois ficavam no histórico — ver `_demonstrar` no
+      // controlador.
+      id: id ?? this.id,
       image: image ?? this.image,
       createdAt: createdAt,
       predictions: predictions,
@@ -273,6 +300,8 @@ class IdentificationResult {
       imageQuality: imageQuality ?? this.imageQuality,
       errorCode: errorCode ?? this.errorCode,
       pipelineVersion: pipelineVersion,
+      secondaryView: secondaryView ?? this.secondaryView,
+      multiView: multiView ?? this.multiView,
     );
   }
 
@@ -316,7 +345,17 @@ class IdentificationResult {
         'imageQuality': imageQuality,
         'errorCode': errorCode,
         'createdAt': FirestoreCodec.serverTimestamp,
+
+        // A segunda vista é do cliente: ele a capturou, mediu e enviou. O que
+        // NÃO vai aqui é `fusion` — o que as duas fotos disseram juntas é
+        // conclusão de análise, e conclusão nasce no servidor.
+        'viewCount': viewCount,
+        'secondaryView': secondaryView?.toMap(),
       };
+
+  /// Se não há hipótese para serializar — rejeitado, em processamento ou com
+  /// erro. Os três casos têm `predictions` vazio, e é isso que importa aqui.
+  bool get _semHipotese => predictions.isEmpty;
 
   /// Documento completo, incluindo o que só o servidor grava.
   ///
@@ -334,17 +373,28 @@ class IdentificationResult {
         'errorCode': errorCode,
         'isMock': isMock,
         'createdAt': FirestoreCodec.serverTimestamp,
+        'viewCount': viewCount,
+        'secondaryView': secondaryView?.toMap(),
+        'fusion': multiView?.toMap(),
 
         // Campos de topo da hipótese principal: permitem consultar e ordenar
         // sem abrir o mapa aninhado.
-        'speciesId': isRejected ? null : top.species.id,
-        'scientificName': isRejected ? null : top.species.scientificName,
-        'confidence': isRejected ? null : top.score,
+        //
+        // `_semHipotese`, e não `isRejected`. Um registro em `processing` não
+        // foi rejeitado **e** não tem hipótese nenhuma — e a versão anterior,
+        // que só perguntava pela rejeição, chamava `top` numa lista vazia e
+        // lançava `Bad state: No element`. O defeito ficou escondido porque
+        // este método só era chamado em resultados concluídos; apareceu quando
+        // o teste de contrato serializou uma identificação de duas vistas
+        // ainda em processamento.
+        'speciesId': _semHipotese ? null : top.species.id,
+        'scientificName': _semHipotese ? null : top.species.scientificName,
+        'confidence': _semHipotese ? null : top.score,
         'rejectionReason': rejectionReason?.id,
 
         // Espécie denormalizada: evita uma leitura por item na lista de
         // histórico (ver `Species.summary`).
-        'species': isRejected ? null : top.species.toSummaryMap(),
+        'species': _semHipotese ? null : top.species.toSummaryMap(),
 
         // Hipóteses alternativas, para a seção "outras possibilidades".
         'alternatives': alternatives
@@ -388,6 +438,12 @@ class IdentificationResult {
       capturedAt: createdAt,
     );
 
+    // Ausentes em todo registro anterior a estes campos: os dois voltam nulos,
+    // e a identificação é lida como o que sempre foi — uma foto só.
+    final SecondaryView? secondaryView =
+        SecondaryView.fromMap(map['secondaryView'], capturedAt: createdAt);
+    final MultiViewSummary? multiView = MultiViewSummary.fromMap(map['fusion']);
+
     if (!status.hasPrediction) {
       return IdentificationResult._(
         id: id,
@@ -404,6 +460,8 @@ class IdentificationResult {
         imageQuality: imageQuality,
         errorCode: errorCode,
         pipelineVersion: pipelineVersion,
+        secondaryView: secondaryView,
+        multiView: multiView,
       );
     }
 
@@ -450,6 +508,8 @@ class IdentificationResult {
       imageQuality: imageQuality,
       errorCode: errorCode,
       pipelineVersion: pipelineVersion,
+      secondaryView: secondaryView,
+      multiView: multiView,
     );
   }
 }

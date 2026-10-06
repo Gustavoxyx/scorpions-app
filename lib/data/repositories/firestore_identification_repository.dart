@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 import '../models/identification.dart';
+import '../models/secondary_view.dart';
 import '../services/failure.dart';
 import '../services/firebase_error_mapper.dart';
 import '../services/firestore_write_mapper.dart';
@@ -118,6 +119,7 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
     String? imageUrl,
     String? thumbnailUrl,
     String? errorCode,
+    SecondaryView? secondaryView,
   }) {
     return FirebaseErrorMapper.guard(() async {
       // `update` e não `set`: toca só estes campos. O documento inteiro traria
@@ -127,6 +129,10 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
         'imageUrl': ?imageUrl,
         'thumbnailUrl': ?thumbnailUrl,
         'errorCode': ?errorCode,
+        // O mapa inteiro, não só os caminhos: o Firestore substitui um mapa
+        // aninhado como unidade, e mandar meio mapa apagaria o tipo de vista e
+        // as medidas de qualidade gravados na criação.
+        'secondaryView': ?secondaryView?.toMap(),
       });
     });
   }

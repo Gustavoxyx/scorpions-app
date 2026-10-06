@@ -46,13 +46,23 @@ abstract interface class ImageUploadService {
   /// demais seguem. O registro da identificação vale mais que o anexo —
   /// perder o histórico inteiro porque a miniatura falhou seria o pior
   /// negócio possível.
+  ///
+  /// [viewIndex] é 1 para a primeira fotografia e 2 para a segunda. As duas
+  /// moram na **mesma pasta**, e a segunda leva sufixo no nome
+  /// (`original-2`, `processed-2`, `thumbnail-2`).
+  ///
+  /// Mesma pasta porque são a mesma identificação: apagar o registro apaga as
+  /// duas com um prefixo só, e uma segunda pasta com outro id criaria imagens
+  /// que nenhum documento referencia pelo caminho que a regra conhece.
   Future<UploadedImagePaths> uploadAll({
     required ProcessedImage image,
     required String userId,
     required String identificationId,
+    int viewIndex = 1,
   });
 
-  /// Remove os arquivos de uma identificação. Não falha se já não existirem.
+  /// Remove os arquivos de uma identificação — das duas vistas. Não falha se
+  /// já não existirem.
   Future<void> deleteFor({
     required String userId,
     required String identificationId,
@@ -84,18 +94,21 @@ class FirebaseImageUploadService implements ImageUploadService {
     required ProcessedImage image,
     required String userId,
     required String identificationId,
+    int viewIndex = 1,
   }) async {
+    assert(viewIndex == 1 || viewIndex == 2, 'só existem duas vistas');
     final String prefixo =
         'users/$userId/identifications/$identificationId';
+    final String sufixo = suffixFor(viewIndex);
 
     // O caminho nunca vem da interface (§9): é montado aqui, a partir do uid
     // da sessão e de um id gerado pelo sistema. Um `userId` vindo de fora
     // permitiria escrever na pasta de outra pessoa — e as Storage Rules
     // recusariam, mas o pedido nem deve ser formulado.
     final List<_Envio> fila = <_Envio>[
-      _Envio('original', image.original),
-      _Envio('processed', image.processed),
-      _Envio('thumbnail', image.thumbnail),
+      _Envio('original', image.original, sufixo),
+      _Envio('processed', image.processed, sufixo),
+      _Envio('thumbnail', image.thumbnail, sufixo),
     ];
 
     final Map<String, String?> feitos = <String, String?>{};
@@ -122,7 +135,8 @@ class FirebaseImageUploadService implements ImageUploadService {
   /// Envia uma forma. Devolve `null` em vez de propagar, para que a falha de
   /// um arquivo não leve os outros junto.
   Future<String?> _enviarOuNulo(String prefixo, _Envio envio) async {
-    final String caminho = '$prefixo/${envio.nome}.${envio.variante.format.extension}';
+    final String caminho =
+        '$prefixo/${envio.nome}${envio.sufixo}.${envio.variante.format.extension}';
     try {
       return await FirebaseErrorMapper.guard(
         () async {
@@ -152,29 +166,44 @@ class FirebaseImageUploadService implements ImageUploadService {
     required String identificationId,
   }) async {
     final String prefix = 'users/$userId/identifications/$identificationId';
-    // `original` é o único arquivo que esta fase grava; os demais nomes já
-    // constam porque a Fase 4 vai gerá-los.
-    for (final String name in <String>['original', 'processed', 'thumbnail']) {
-      for (final ImageFormat f in ImageFormat.values) {
-        try {
-          await _storage.ref('$prefix/$name.${f.extension}').delete();
-        } catch (_) {
-          // Arquivo inexistente é o caso normal — não é erro.
+    // As duas vistas. Esquecer a segunda aqui deixaria, a cada identificação
+    // cancelada ou apagada, três arquivos que nenhum registro referencia — dado
+    // pessoal sem dono, que só a exclusão da conta inteira alcançaria.
+    for (final int vista in <int>[1, 2]) {
+      for (final String name in <String>['original', 'processed', 'thumbnail']) {
+        for (final ImageFormat f in ImageFormat.values) {
+          try {
+            await _storage
+                .ref('$prefix/$name${suffixFor(vista)}.${f.extension}')
+                .delete();
+          } catch (_) {
+            // Arquivo inexistente é o caso normal — não é erro.
+          }
         }
       }
     }
   }
 
-  // -- Interno ----------------------------------------------------------------
-
+  /// Sufixo do nome de arquivo de cada vista.
+  ///
+  /// A primeira não leva sufixo, de propósito: os nomes dela são os que já
+  /// existem no bucket, e mudá-los deixaria toda identificação anterior
+  /// apontando para arquivos com outro nome.
+  ///
+  /// **Espelha `isAllowedFileName` em `firebase/storage.rules` e a lista de
+  /// `ViewRef` no backend.** Os três precisam concordar; quem tem a palavra
+  /// final é a regra.
+  @visibleForTesting
+  static String suffixFor(int viewIndex) => viewIndex == 2 ? '-2' : '';
 }
 
 /// Par nome/forma, só para a fila de envio ficar legível.
 @immutable
 class _Envio {
-  const _Envio(this.nome, this.variante);
+  const _Envio(this.nome, this.variante, this.sufixo);
   final String nome;
   final ImageVariant variante;
+  final String sufixo;
 }
 
 /// Sem upload: usada nos modos simulado e de teste.
@@ -186,6 +215,7 @@ class NoopImageUploadService implements ImageUploadService {
     required ProcessedImage image,
     required String userId,
     required String identificationId,
+    int viewIndex = 1,
   }) async =>
       const UploadedImagePaths.none();
 

@@ -34,10 +34,17 @@ class ViewRef(BaseModel):
         Storage; aqui ela é conferida de novo, porque o servidor não herda a
         confiança de outra camada.
         """
+        formas = ("original", "processed", "thumbnail")
+        extensoes = ("jpg", "png", "webp")
+        # O sufixo `-2` é a segunda fotografia da mesma identificação. As duas
+        # moram na mesma pasta; a regra do Storage aceita exatamente estes
+        # nomes, e o aplicativo gera exatamente estes. Só `-2`: o pedido tem
+        # teto de duas vistas, e não há terceiro arquivo para apontar.
         permitidos = {
-            "original.jpg", "processed.jpg", "thumbnail.jpg",
-            "original.png", "processed.png", "thumbnail.png",
-            "original.webp", "processed.webp", "thumbnail.webp",
+            f"{forma}{sufixo}.{ext}"
+            for forma in formas
+            for sufixo in ("", "-2")
+            for ext in extensoes
         }
         if v not in permitidos:
             raise ValueError("nome de arquivo não previsto")

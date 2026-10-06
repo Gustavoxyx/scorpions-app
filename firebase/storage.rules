@@ -43,9 +43,21 @@ service firebase.storage {
     }
 
     // Nomes previstos. Impede que o caminho vire depósito arbitrário.
-    // `processed` e `thumbnail` já são aceitos porque a Fase 4 vai gerá-los.
+    //
+    // O sufixo `-2` é a SEGUNDA FOTOGRAFIA da mesma identificação (Fase 5).
+    // As duas vistas moram na mesma pasta, de propósito: são a mesma
+    // identificação, e apagar o registro apaga as duas com um prefixo só.
+    //
+    // Só `-2`, e não `-[0-9]+`: o produto fixa duas fotos, e o backend recusa
+    // a terceira. Um padrão aberto deixaria um cliente adulterado guardar
+    // `original-3` até `original-999` na pasta de uma identificação — oito
+    // megabytes cada, sem registro nenhum que os referencie.
+    //
+    // Espelhado em `FirebaseImageUploadService.suffixFor` no aplicativo e na
+    // lista de `ViewRef` no backend. Os três precisam concordar, e esta regra
+    // é quem tem a palavra final.
     function isAllowedFileName(name) {
-      return name.matches('(original|processed|thumbnail)\\.(jpg|jpeg|png|webp)');
+      return name.matches('(original|processed|thumbnail)(-2)?\\.(jpg|jpeg|png|webp)');
     }
 
     // -------------------------------------------------------------------------

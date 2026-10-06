@@ -106,6 +106,46 @@ def test_nomes_que_o_pipeline_gera_sao_aceitos(nome: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "nome", ["original-2.jpg", "processed-2.jpg", "thumbnail-2.webp"]
+)
+def test_nomes_da_segunda_vista_sao_aceitos(nome: str) -> None:
+    """A segunda fotografia mora na mesma pasta, com sufixo `-2` (Fase 5).
+
+    São exatamente os nomes que o aplicativo gera
+    (`FirebaseImageUploadService.suffixFor`) e que a regra do Storage aceita. As
+    três listas precisam concordar; esta é a do servidor.
+    """
+    assert ViewRef(captureType="tail", fileName=nome).fileName == nome
+
+
+@pytest.mark.parametrize(
+    "nome",
+    [
+        "original-3.jpg",  # não existe terceira vista
+        "original-22.jpg",
+        "original-0.jpg",
+        "original-1.jpg",  # a primeira não leva sufixo
+        "original--2.jpg",
+        "original-2-2.jpg",
+        "original-2.jpg.exe",
+        "original-2",
+        "-2.jpg",
+        "original-2.jpeg",  # o pipeline não gera esta extensão
+    ],
+)
+def test_so_existe_a_segunda_vista(nome: str) -> None:
+    """Só `-2`, e não um padrão aberto.
+
+    O pedido tem teto de duas vistas. Aceitar `-3` aqui seria aceitar um nome
+    para o qual não há fotografia — e a regra do Storage o recusa pelo mesmo
+    motivo: um padrão aberto deixaria guardar arquivos sem registro que os
+    referencie.
+    """
+    with pytest.raises(ValidationError):
+        ViewRef(captureType="tail", fileName=nome)
+
+
+@pytest.mark.parametrize(
     "sid",
     [
         "../outro",

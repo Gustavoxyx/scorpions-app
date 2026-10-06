@@ -3,11 +3,13 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../core/observability/app_log.dart';
+import '../models/capture_instruction.dart';
 import '../models/captured_image.dart';
 import '../models/classification.dart';
 import '../models/detection.dart';
 import '../models/identification.dart';
 import '../models/processed_image.dart';
+import '../models/secondary_view.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/identification_repository.dart';
 import 'connectivity_service.dart';
@@ -63,6 +65,25 @@ class PipelineOutcome {
 
   final IdentificationResult? result;
   final bool cancelled;
+}
+
+/// A segunda fotografia, pronta para envio.
+///
+/// Junta as três coisas que o pipeline precisa dela e que nascem em momentos
+/// diferentes: a captura, o que a inspeção mediu, e o que havia sido **pedido**.
+/// A instrução vai junto para ficar registrada — sem ela não há como perguntar,
+/// depois, se o usuário fotografou a cauda quando pedimos a cauda.
+@immutable
+class SecondaryCapture {
+  const SecondaryCapture({
+    required this.image,
+    required this.preparation,
+    required this.instruction,
+  });
+
+  final CapturedImage image;
+  final ImagePreparation preparation;
+  final ImageCaptureInstruction instruction;
 }
 
 /// Coordena a jornada da imagem, da leitura ao registro (briefing §11).
@@ -158,12 +179,21 @@ class IdentificationPipeline {
 
   /// Cria o registro, envia as imagens e devolve a identificação em
   /// `processing` — que é o estado honesto enquanto não há modelo (§10).
+  ///
+  /// [secondary] é a segunda fotografia, opcional. Opcional de verdade: o animal
+  /// pode ter fugido, a pessoa pode estar em situação de risco, o aparelho pode
+  /// não ter focado. Uma identificação de uma foto só continua válida.
   Future<PipelineOutcome> submit({
     required CapturedImage image,
     required ImagePreparation preparation,
+    SecondaryCapture? secondary,
     void Function(PipelineStage stage)? onStage,
   }) async {
     assert(preparation.canProceed, 'submit exige uma preparação utilizável');
+    assert(
+      secondary == null || secondary.preparation.canProceed,
+      'a segunda fotografia também precisa de uma preparação utilizável',
+    );
 
     final ProcessedImage? processada = preparation.image;
     final String uid = _requireUid();
@@ -180,68 +210,83 @@ class IdentificationPipeline {
     onStage?.call(PipelineStage.registering);
     if (_cancelled) return _abortar(uid, id, apagar: false);
 
+    final ProcessedImage? segundaProcessada = secondary?.preparation.image;
+
+    // A segunda vista nasce junto do registro, já com o que se sabe dela antes
+    // do envio: o que foi pedido e o que o aparelho mediu. Os caminhos entram
+    // depois, como os da primeira.
+    SecondaryView? segunda = secondary == null
+        ? null
+        : SecondaryView(
+            captureType: secondary.instruction.captureType,
+            instructionId: secondary.instruction.id,
+            image: secondary.image,
+            imageQuality: secondary.preparation.quality?.toMap(),
+          );
+
     IdentificationResult registro = IdentificationResult.processing(
       id: id,
       image: image,
       userId: uid,
       imageQuality: preparation.quality?.toMap(),
+      secondaryView: segunda,
     );
     await _repository.save(registro);
     AppLog.event(AppEvent.identificationCreated, <String, Object?>{
       'quality': preparation.quality?.quality.name ?? 'simulada',
+      'views': registro.viewCount,
     });
 
-    if (processada != null) {
+    if (processada != null || segundaProcessada != null) {
       onStage?.call(PipelineStage.uploading);
       if (_cancelled) return _abortar(uid, id);
 
       AppLog.event(AppEvent.uploadStarted, <String, Object?>{
-        'kb': (processada.totalBytes / 1024).round(),
+        'kb': (((processada?.totalBytes ?? 0) +
+                    (segundaProcessada?.totalBytes ?? 0)) /
+                1024)
+            .round(),
+        'views': registro.viewCount,
       });
 
-      // O envio pode falhar sem que nada esteja errado com a foto.
+      // As duas vistas sobem AO MESMO TEMPO.
       //
-      // O caso concreto deste projeto: o Cloud Storage exige plano Blaze, que
-      // ainda não foi autorizado, então `uploadAll` lança a cada tentativa.
-      // Sem este `catch`, a exceção subiria e o usuário veria um erro — mas o
-      // documento já teria sido gravado na linha acima e ficaria preso em
-      // `processing` para sempre, invisível e órfão.
+      // Não dependem uma da outra, e esperar a primeira terminar para começar a
+      // segunda dobraria o tempo que o usuário passa olhando para a tela de
+      // envio. O briefing de otimização (§27) pede exatamente isto.
       //
-      // Esta tolerância existia na Fase 3, dentro do repositório. Ao mover o
-      // envio para cá eu a deixei para trás; é regressão minha, e o remendo é
-      // trazê-la junto da responsabilidade que mudou de lugar.
-      //
-      // Perder a foto é ruim. Perder a foto **e** o registro é pior: a
-      // identificação sobrevive marcada, e a tela tem como explicar por quê.
-      UploadedImagePaths? caminhos;
-      String? falha;
-      try {
-        caminhos = await _uploader.uploadAll(
-          image: processada,
-          userId: uid,
-          identificationId: id,
-        );
-        AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
-          'files': caminhos.uploadedCount,
-        });
-      } on AppFailure catch (e) {
-        falha = e.code ?? 'upload-failed';
-      } catch (_) {
-        falha = 'upload-failed';
-      }
-
-      if (falha != null) {
-        AppLog.event(AppEvent.uploadFailed, <String, Object?>{'code': falha});
-      }
+      // Cada uma tem a própria tolerância a falha — ver [_enviarVista]. Uma
+      // exceção na segunda não pode derrubar a primeira, nem o contrário:
+      // `Future.wait` sobre futuros que nunca lançam é o que garante isso.
+      final List<_ResultadoDeEnvio> envios =
+          await Future.wait<_ResultadoDeEnvio>(<Future<_ResultadoDeEnvio>>[
+        _enviarVista(processada, uid: uid, id: id, viewIndex: 1),
+        _enviarVista(segundaProcessada, uid: uid, id: id, viewIndex: 2),
+      ]);
+      final _ResultadoDeEnvio primeira = envios[0];
+      final _ResultadoDeEnvio segundaEnviada = envios[1];
 
       if (_cancelled) return _abortar(uid, id);
+
+      // O código de erro do registro fala da primeira foto, que é a que
+      // sustenta a identificação. Se só a segunda falhou, o registro continua
+      // utilizável com uma vista — e isso fica marcado com um código próprio,
+      // para não ser confundido com "a identificação ficou sem imagem".
+      final String? falha = primeira.falha ??
+          (segundaEnviada.falha == null ? null : 'second-view-upload-failed');
+
+      segunda = segunda?.copyWith(
+        imageUrl: segundaEnviada.caminhos?.forAnalysis,
+        thumbnailUrl: segundaEnviada.caminhos?.thumbnail,
+      );
 
       // A referência gravada aponta para a versão de análise, com queda para
       // o original: é ela que um modelo vai consumir.
       registro = registro.copyWith(
-        imageUrl: caminhos?.forAnalysis,
-        thumbnailUrl: caminhos?.thumbnail,
+        imageUrl: primeira.caminhos?.forAnalysis,
+        thumbnailUrl: primeira.caminhos?.thumbnail,
         errorCode: falha,
+        secondaryView: segunda,
       );
 
       // Se nem a marcação conseguir ser gravada, o registro continua de pé
@@ -250,17 +295,77 @@ class IdentificationPipeline {
       try {
         await _repository.attachUploadResult(
           id,
-          imageUrl: caminhos?.forAnalysis,
-          thumbnailUrl: caminhos?.thumbnail,
+          imageUrl: primeira.caminhos?.forAnalysis,
+          thumbnailUrl: primeira.caminhos?.thumbnail,
           errorCode: falha,
+          secondaryView: segunda,
         );
       } catch (_) {}
     }
 
     onStage?.call(PipelineStage.awaitingAnalysis);
-    if (processada != null) await _prepararAnalise(processada);
+    // Em paralelo, pelo mesmo motivo do envio: analisar a foto de cima não
+    // precisa de nada que venha do close da cauda.
+    await Future.wait<void>(<Future<void>>[
+      if (processada != null) _prepararAnalise(processada),
+      if (segundaProcessada != null) _prepararAnalise(segundaProcessada),
+    ]);
 
     return PipelineOutcome.completed(registro);
+  }
+
+  /// Envia uma vista e **nunca lança**.
+  ///
+  /// O envio pode falhar sem que nada esteja errado com a foto.
+  ///
+  /// O caso concreto deste projeto: o Cloud Storage exige plano Blaze, que
+  /// ainda não foi autorizado, então `uploadAll` lança a cada tentativa. Sem
+  /// este `catch`, a exceção subiria e o usuário veria um erro — mas o
+  /// documento já teria sido gravado e ficaria preso em `processing` para
+  /// sempre, invisível e órfão.
+  ///
+  /// Esta tolerância existia na Fase 3, dentro do repositório. Ao mover o envio
+  /// para o pipeline ela ficou para trás uma vez; ao passar para duas vistas
+  /// ela veio para cá, para que as duas a tenham igual e uma falha numa não
+  /// alcance a outra.
+  ///
+  /// Perder a foto é ruim. Perder a foto **e** o registro é pior: a
+  /// identificação sobrevive marcada, e a tela tem como explicar por quê.
+  Future<_ResultadoDeEnvio> _enviarVista(
+    ProcessedImage? imagem, {
+    required String uid,
+    required String id,
+    required int viewIndex,
+  }) async {
+    // Vista ausente, ou simulada: não há o que enviar, e isso não é falha.
+    if (imagem == null) return const _ResultadoDeEnvio();
+
+    try {
+      final UploadedImagePaths caminhos = await _uploader.uploadAll(
+        image: imagem,
+        userId: uid,
+        identificationId: id,
+        viewIndex: viewIndex,
+      );
+      AppLog.event(AppEvent.uploadCompleted, <String, Object?>{
+        'files': caminhos.uploadedCount,
+        'view': viewIndex,
+      });
+      return _ResultadoDeEnvio(caminhos: caminhos);
+    } on AppFailure catch (e) {
+      final String codigo = e.code ?? 'upload-failed';
+      AppLog.event(AppEvent.uploadFailed, <String, Object?>{
+        'code': codigo,
+        'view': viewIndex,
+      });
+      return _ResultadoDeEnvio(falha: codigo);
+    } catch (_) {
+      AppLog.event(AppEvent.uploadFailed, <String, Object?>{
+        'code': 'upload-failed',
+        'view': viewIndex,
+      });
+      return const _ResultadoDeEnvio(falha: 'upload-failed');
+    }
   }
 
   // -- Interno ----------------------------------------------------------------
@@ -363,4 +468,16 @@ class IdentificationPipeline {
       return Random();
     }
   }
+}
+
+/// O que aconteceu com o envio de uma vista.
+///
+/// Os dois campos nulos significam "não havia o que enviar" — vista ausente ou
+/// simulada. É diferente de falha, e por isso não vira código de erro.
+@immutable
+class _ResultadoDeEnvio {
+  const _ResultadoDeEnvio({this.caminhos, this.falha});
+
+  final UploadedImagePaths? caminhos;
+  final String? falha;
 }

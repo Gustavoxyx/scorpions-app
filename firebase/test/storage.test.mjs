@@ -88,6 +88,56 @@ describe('upload de imagem de identificação', () => {
     );
   });
 
+  // A segunda fotografia da mesma identificação (Fase 5). Mesma pasta, sufixo
+  // `-2`: apagar o registro apaga as duas com um prefixo só.
+  it('envia a SEGUNDA vista, com sufixo, na mesma pasta', async () => {
+    const storage = asUser(testEnv, ALICE, ALICE_EMAIL).storage();
+    for (const nome of ['original-2.jpg', 'processed-2.jpg', 'thumbnail-2.webp']) {
+      await assertSucceeds(
+        uploadBytes(
+          ref(storage, `users/${ALICE}/identifications/id-1/${nome}`),
+          TINY_PNG,
+          imageMeta,
+        ),
+      );
+    }
+  });
+
+  it('NÃO envia uma TERCEIRA vista', async () => {
+    // O produto fixa duas fotos. Um padrão aberto (`-[0-9]+`) deixaria um
+    // cliente adulterado guardar `original-3` até `original-999` na pasta de
+    // uma identificação — oito megabytes cada, sem registro que os referencie.
+    const storage = asUser(testEnv, ALICE, ALICE_EMAIL).storage();
+    for (const nome of [
+      'original-3.jpg',
+      'original-22.jpg',
+      'original-0.jpg',
+      'original-1.jpg',
+      'original--2.jpg',
+      'original-2-2.jpg',
+      'original-2.jpg.exe',
+    ]) {
+      await assertFails(
+        uploadBytes(
+          ref(storage, `users/${ALICE}/identifications/id-1/${nome}`),
+          TINY_PNG,
+          imageMeta,
+        ),
+      );
+    }
+  });
+
+  it('NÃO envia a segunda vista para o caminho de outra pessoa', async () => {
+    const storage = asUser(testEnv, ALICE, ALICE_EMAIL).storage();
+    await assertFails(
+      uploadBytes(
+        ref(storage, `users/${BOB}/identifications/id-1/original-2.jpg`),
+        TINY_PNG,
+        imageMeta,
+      ),
+    );
+  });
+
   it('NÃO envia para a raiz do bucket', async () => {
     const storage = asUser(testEnv, ALICE, ALICE_EMAIL).storage();
     await assertFails(

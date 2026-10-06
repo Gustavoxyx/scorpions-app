@@ -112,6 +112,42 @@ describe('contrato: formas geradas pelo aplicativo', () => {
     );
   });
 
+  // Duas vistas (Fase 5). As duas formas saem do mesmo modelo de produção, e
+  // a diferença entre elas é exatamente o campo `fusion`.
+  it('a identificação de DUAS VISTAS que o app grava é aceita', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'identifications', 'ident-3'),
+        hydrate(shapes.identificationTwoViewsClientCreate),
+      ),
+    );
+  });
+
+  it('a mesma identificação com `fusion` é RECUSADA do cliente', async () => {
+    // O que as duas fotos disseram juntas é conclusão de análise. Forjar
+    // "concordaram" é o mesmo ataque de forjar `confidence: 0.99`.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'identifications', 'ident-3-forjado'),
+        hydrate(shapes.identificationTwoViewsServerFull),
+      ),
+    );
+  });
+
+  it('só `fusion` já basta para recusar', async () => {
+    // Isola a causa. O teste acima cai também por `isMock` e `modelVersion`;
+    // este prova que `fusion` sozinho é barrado, e não por carona.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'ident-3-so-fusion'), {
+        ...hydrate(shapes.identificationTwoViewsClientCreate),
+        fusion: shapes.identificationTwoViewsServerFull.fusion,
+      }),
+    );
+  });
+
   it('a rejeição completa também é recusada do cliente', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(

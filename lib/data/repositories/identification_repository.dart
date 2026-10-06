@@ -1,4 +1,5 @@
 import '../mock/mock_history.dart';
+import '../models/secondary_view.dart';
 import '../models/identification.dart';
 
 /// Persistência das identificações do usuário.
@@ -28,11 +29,17 @@ abstract interface class IdentificationRepository {
   /// simplesmente não acontece. Quando isso ocorre, a identificação continua
   /// existindo — só que sem foto — e [errorCode] é o que permite à tela dizer
   /// isso ao usuário em vez de mostrar um registro mudo e quebrado.
+  ///
+  /// [secondaryView] leva os caminhos da segunda fotografia, quando houve uma.
+  /// Vai inteira, e não campo a campo: no Firestore um mapa aninhado é
+  /// substituído como unidade, e mandar só os caminhos apagaria o tipo de vista
+  /// e as medidas de qualidade gravados na criação.
   Future<void> attachUploadResult(
     String id, {
     String? imageUrl,
     String? thumbnailUrl,
     String? errorCode,
+    SecondaryView? secondaryView,
   });
 
   Future<void> delete(String id);
@@ -75,6 +82,7 @@ class InMemoryIdentificationRepository implements IdentificationRepository {
     String? imageUrl,
     String? thumbnailUrl,
     String? errorCode,
+    SecondaryView? secondaryView,
   }) async {
     final int i = _items.indexWhere((IdentificationResult r) => r.id == id);
     if (i < 0) return;
@@ -82,6 +90,7 @@ class InMemoryIdentificationRepository implements IdentificationRepository {
       imageUrl: imageUrl,
       thumbnailUrl: thumbnailUrl,
       errorCode: errorCode,
+      secondaryView: secondaryView,
     );
   }
 
