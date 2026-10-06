@@ -16,6 +16,7 @@ import '../../core/widgets/specimen_image.dart';
 import '../../data/models/identification.dart';
 import '../../state/identification_controller.dart';
 import '../../core/theme/app_sizing.dart';
+import 'widgets/multi_view_note.dart';
 
 /// Tela de resultado negativo.
 ///
@@ -108,6 +109,13 @@ class UnidentifiedPage extends StatelessWidget {
                   ),
                   AppSpacing.gapXl,
                   _ReasonCard(reason: reason),
+                  // Com duas fotos, a recusa pode ter vindo de as vistas
+                  // discordarem — e isso merece ser dito à parte: o que a
+                  // pessoa precisa refazer não é "uma foto melhor", é o par.
+                  if (result.viewCount > 1) ...<Widget>[
+                    AppSpacing.gapLg,
+                    MultiViewNote(result: result),
+                  ],
                   AppSpacing.gapXl,
                   AppButton(
                     label: AppStrings.tryAgain,

@@ -30,17 +30,13 @@ enum DeletionStage {
 /// jogaria para a tela a tarefa de lembrar em que ponto estava — e a tela já
 /// tem o diálogo, o campo de texto e o botão para cuidar.
 class AccountController extends ChangeNotifier {
-  // `prefer_initializing_formals` suprimido: a sugestão do lint tornaria os
-  // parâmetros nomeados `_account:` e `_auth:` na API pública, para poupar duas
-  // atribuições. Os campos são privados de propósito; os parâmetros, públicos.
+  // Os nomes públicos são `account:` e `auth:` — o sublinhado fica só nos
+  // campos. (Havia aqui uma supressão de lint com um comentário afirmando o
+  // contrário. Estava errado, e o lint tinha razão.)
   AccountController({
-    required AccountRepository account,
-    required AuthRepository auth,
-  })  :
-        // ignore: prefer_initializing_formals
-        _account = account,
-        // ignore: prefer_initializing_formals
-        _auth = auth;
+    required this._account,
+    required this._auth,
+  });
 
   final AccountRepository _account;
   final AuthRepository _auth;

@@ -79,21 +79,18 @@ abstract interface class BackendClient {
 typedef IdTokenProvider = Future<String?> Function({bool forceRefresh});
 
 class HttpBackendClient implements BackendClient {
-  // `prefer_initializing_formals` é suprimido nas duas atribuições abaixo.
+  // `this._idToken` num parâmetro nomeado expõe o nome público `idToken:` —
+  // nesta versão do Dart o sublinhado fica só no campo.
   //
-  // O lint sugere `this._idToken` e `this._timeout` como parâmetros. Seguir a
-  // sugestão tornaria os nomes da API pública `_idToken:` e `_timeout:` — um
-  // sublinhado na assinatura de quem chama, para poupar duas atribuições. Os
-  // campos são privados de propósito, e os parâmetros públicos também.
+  // Vale registrar porque a primeira versão deste construtor suprimia o lint
+  // `prefer_initializing_formals` com um comentário dizendo o contrário: que
+  // segui-lo poria um sublinhado na assinatura de quem chama. Era falso — o
+  // resto do projeto já usa esta forma —, e o lint estava certo.
   HttpBackendClient({
-    required IdTokenProvider idToken,
+    required this._idToken,
     String? baseUrl,
-    Duration timeout = const Duration(seconds: 30),
+    this._timeout = const Duration(seconds: 30),
   })  :
-        // ignore: prefer_initializing_formals
-        _idToken = idToken,
-        // ignore: prefer_initializing_formals
-        _timeout = timeout,
         // A barra final é removida para que a concatenação com o caminho não
         // produza `//v1/me`. Alguns servidores tratam isso como outro caminho e
         // respondem 404 — um erro que pareceria do código e é de configuração.

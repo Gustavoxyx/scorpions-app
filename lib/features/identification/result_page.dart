@@ -19,6 +19,7 @@ import '../../data/models/identification.dart';
 import '../../data/models/species.dart';
 import '../../state/identification_controller.dart';
 import '../species/widgets/model_3d_slot.dart';
+import 'widgets/multi_view_note.dart';
 
 /// Tela de resultado (identificação bem-sucedida).
 ///
@@ -96,6 +97,18 @@ class ResultPage extends StatelessWidget {
                         order: 2,
                         child: _ConfidencePanel(prediction: top),
                       ),
+                      // O que as duas fotos disseram juntas. Só aparece quando
+                      // houve duas — e fica logo abaixo da confiança porque é
+                      // dela que este cartão fala: uma confiança sustentada
+                      // por duas vistas que concordam não é a mesma coisa que
+                      // uma sustentada por uma foto só.
+                      if (result.viewCount > 1) ...<Widget>[
+                        AppSpacing.gapLg,
+                        _Stage(
+                          order: 2,
+                          child: MultiViewNote(result: result),
+                        ),
+                      ],
                       AppSpacing.gapLg,
                       // 4 — os detalhes.
                       _Stage(

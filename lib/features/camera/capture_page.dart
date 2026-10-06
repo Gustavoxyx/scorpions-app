@@ -12,6 +12,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/feedback_states.dart';
+import '../../data/models/capture_instruction.dart';
 import '../../data/models/captured_image.dart';
 import '../../app/dependencies.dart';
 import '../../data/services/camera_service.dart';
@@ -67,8 +68,23 @@ class _CapturePageState extends State<CapturePage> {
 
   Future<void> _handleImage(CapturedImage? image) async {
     if (image == null || !mounted) return;
-    context.read<IdentificationController>().stageImage(image);
-    context.push(AppRoutes.confirmPhoto);
+    final IdentificationController controller = context
+        .read<IdentificationController>();
+
+    // Lido ANTES de `stageImage`, que encerra a captura da segunda vista. Lido
+    // depois, a resposta seria sempre "não", e a segunda foto abriria uma
+    // segunda tela de confirmação por cima da primeira.
+    final bool eraSegunda = controller.isCapturingSecond;
+    controller.stageImage(image);
+
+    if (eraSegunda) {
+      // A confirmação já está logo abaixo na pilha: foi ela que abriu esta
+      // tela. Voltar para ela é o que mantém o botão "voltar" coerente — de lá,
+      // voltar leva à primeira captura, e não a uma confirmação repetida.
+      context.pop();
+    } else {
+      context.push(AppRoutes.confirmPhoto);
+    }
   }
 
   Future<void> _shoot() async {
@@ -84,8 +100,9 @@ class _CapturePageState extends State<CapturePage> {
   /// Antes este botão apenas re-sondava o hardware, o que em aparelho com
   /// permissão negada repetia a mesma tela sem explicar nada.
   Future<void> _pedirPermissao() async {
-    final PermissionService servico =
-        context.read<AppDependencies>().permissionService;
+    final PermissionService servico = context
+        .read<AppDependencies>()
+        .permissionService;
     final PermissionState r = await servico.requestCamera();
     if (!mounted) return;
     setState(() => _permissao = r);
@@ -117,42 +134,68 @@ class _CapturePageState extends State<CapturePage> {
 
   @override
   Widget build(BuildContext context) {
+    final IdentificationController identificacao = context
+        .watch<IdentificationController>();
+    final bool segundaVista = identificacao.isCapturingSecond;
+
     // O visor é sempre escuro, mesmo no tema claro: é uma superfície de mídia,
     // não uma superfície da interface.
-    return Scaffold(
-      backgroundColor: const Color(0xFF07100C),
-      body: ListenableBuilder(
-        listenable: _session,
-        builder: (BuildContext context, _) {
-          return Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              _viewfinder(context),
-              // Véu escuro nas bordas: destaca a área de enquadramento.
-              const _EdgeVignette(),
-              SafeArea(
-                child: Column(
-                  children: <Widget>[
-                    _TopBar(
-                      onClose: () => context.pop(),
-                      onSwitch: _session.canSwitchCamera
-                          ? _session.switchCamera
-                          : null,
-                      onTips: () => context.push(AppRoutes.photoTips),
-                    ),
-                    Expanded(child: _overlay(context)),
-                    CaptureControls(
-                      onShoot: _session.isReady ? _shoot : null,
-                      onGallery: _pickFromGallery,
-                      busy: _busy ||
-                          _session.status == CameraSessionStatus.capturing,
-                    ),
-                  ],
+    return PopScope(
+      // Sair da câmera sem fotografar encerra a captura da segunda vista.
+      //
+      // Sem isto, o controlador continuaria achando que a próxima foto é a
+      // segunda — e a primeira foto da PRÓXIMA identificação seria anexada
+      // como segunda vista desta. O gesto de voltar do sistema não passa pelo
+      // botão de fechar, então a limpeza precisa estar aqui, que é por onde
+      // toda saída passa.
+      //
+      // Depois de uma captura bem-sucedida isto não faz nada: `stageImage` já
+      // encerrou a captura antes de a tela fechar.
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (didPop) identificacao.cancelSecondCapture();
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF07100C),
+        body: ListenableBuilder(
+          listenable: _session,
+          builder: (BuildContext context, _) {
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                _viewfinder(context),
+                // Véu escuro nas bordas: destaca a área de enquadramento.
+                const _EdgeVignette(),
+                SafeArea(
+                  child: Column(
+                    children: <Widget>[
+                      _TopBar(
+                        onClose: () => context.pop(),
+                        onSwitch: _session.canSwitchCamera
+                            ? _session.switchCamera
+                            : null,
+                        onTips: () => context.push(AppRoutes.photoTips),
+                      ),
+                      Expanded(
+                        child: _overlay(
+                          context,
+                          instruction: identificacao.currentInstruction,
+                          segundaVista: segundaVista,
+                        ),
+                      ),
+                      CaptureControls(
+                        onShoot: _session.isReady ? _shoot : null,
+                        onGallery: _pickFromGallery,
+                        busy:
+                            _busy ||
+                            _session.status == CameraSessionStatus.capturing,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -176,39 +219,67 @@ class _CapturePageState extends State<CapturePage> {
   }
 
   /// Conteúdo sobreposto: moldura, instrução ou estado alternativo.
-  Widget _overlay(BuildContext context) {
+  Widget _overlay(
+    BuildContext context, {
+    required ImageCaptureInstruction instruction,
+    required bool segundaVista,
+  }) {
     return switch (_session.status) {
       CameraSessionStatus.ready ||
-      CameraSessionStatus.capturing =>
-        _FramingOverlay(active: _session.status == CameraSessionStatus.ready),
+      CameraSessionStatus.capturing => _FramingOverlay(
+        active: _session.status == CameraSessionStatus.ready,
+        // Na primeira foto o texto continua sendo o de sempre. Na segunda,
+        // é o que o plano de captura decidiu pedir — escolhido a partir do
+        // que foi medido na primeira.
+        title: segundaVista ? instruction.title : AppStrings.cameraGuide,
+        hint: segundaVista ? instruction.description : AppStrings.cameraHint,
+        step: segundaVista ? 'Foto 2 de 2' : null,
+      ),
       CameraSessionStatus.initializing => const Center(
-          child: CircularProgressIndicator(strokeWidth: 2.4),
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2.4),
+      ),
       CameraSessionStatus.permissionDenied => _PermissionState(
-          permissao: _permissao,
-          onRetry: _pedirPermissao,
-          onSettings: _abrirAjustes,
-          onGallery: _pickFromGallery,
-        ),
+        permissao: _permissao,
+        onRetry: _pedirPermissao,
+        onSettings: _abrirAjustes,
+        onGallery: _pickFromGallery,
+      ),
       CameraSessionStatus.unavailable => _UnavailableState(
-          onGallery: _pickFromGallery,
-          onSimulate: _simulate,
-        ),
+        onGallery: _pickFromGallery,
+        onSimulate: _simulate,
+      ),
       CameraSessionStatus.error => ErrorState(
-          title: 'Falha na câmera',
-          message: _session.errorMessage ??
-              'Não foi possível iniciar a captura neste aparelho.',
-          onRetry: _session.start,
-        ),
+        title: 'Falha na câmera',
+        message:
+            _session.errorMessage ??
+            'Não foi possível iniciar a captura neste aparelho.',
+        onRetry: _session.start,
+      ),
     };
   }
 }
 
 /// Moldura + instrução.
 class _FramingOverlay extends StatelessWidget {
-  const _FramingOverlay({required this.active});
+  const _FramingOverlay({
+    required this.active,
+    required this.title,
+    required this.hint,
+    this.step,
+  });
 
   final bool active;
+
+  /// O pedido, em uma frase curta.
+  final String title;
+
+  /// Como conseguir a foto.
+  final String hint;
+
+  /// "Foto 2 de 2", quando há mais de uma. Nulo na primeira: dizer "1 de 2"
+  /// antes de a pessoa saber que haverá uma segunda prometeria um passo que
+  /// ela pode escolher não dar.
+  final String? step;
 
   @override
   Widget build(BuildContext context) {
@@ -238,15 +309,30 @@ class _FramingOverlay extends StatelessWidget {
             ),
             child: Column(
               children: <Widget>[
+                if (step != null) ...<Widget>[
+                  Text(
+                    step!,
+                    textAlign: TextAlign.center,
+                    style: context.text.overlineSmall.copyWith(
+                      color: c.onMediaDim,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                ],
                 Text(
-                  AppStrings.cameraGuide,
+                  title,
                   textAlign: TextAlign.center,
                   style: context.text.h4.copyWith(color: c.onMedia),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  AppStrings.cameraHint,
+                  hint,
                   textAlign: TextAlign.center,
+                  // A instrução da segunda foto é mais longa que a da
+                  // primeira. Sem teto de linhas ela empurraria a moldura para
+                  // fora da tela em aparelhos baixos.
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                   style: context.text.caption.copyWith(color: c.onMediaDim),
                 ),
               ],
@@ -335,21 +421,21 @@ class _PermissionState extends StatelessWidget {
       title: AppStrings.cameraPermissionTitle,
       message: bloqueado
           ? 'O acesso à câmera está bloqueado por uma restrição deste '
-              'aparelho. Use a galeria para escolher uma foto.'
+                'aparelho. Use a galeria para escolher uma foto.'
           : definitivo
-              ? 'A permissão foi negada antes, e o sistema não pergunta de '
-                  'novo. Para liberar, abra os ajustes do aparelho.'
-              : AppStrings.cameraPermissionBody,
+          ? 'A permissão foi negada antes, e o sistema não pergunta de '
+                'novo. Para liberar, abra os ajustes do aparelho.'
+          : AppStrings.cameraPermissionBody,
       primaryLabel: definitivo
           ? 'Abrir ajustes'
           : bloqueado
-              ? AppStrings.cameraGallery
-              : AppStrings.cameraPermissionAction,
+          ? AppStrings.cameraGallery
+          : AppStrings.cameraPermissionAction,
       onPrimary: definitivo
           ? onSettings
           : bloqueado
-              ? onGallery
-              : onRetry,
+          ? onGallery
+          : onRetry,
       secondaryLabel: AppStrings.cameraGallery,
       onSecondary: onGallery,
     );

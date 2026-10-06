@@ -81,9 +81,20 @@ abstract final class AppStrings {
   static const String cameraHint = 'Boa luz, fundo limpo e corpo inteiro.';
   static const String cameraGallery = 'Galeria';
   static const String cameraPermissionTitle = 'Acesso à câmera';
+  /// Explica o pedido de câmera.
+  ///
+  /// Este texto dizia também "A imagem não sai do aparelho nesta versão". Era
+  /// verdade nas Fases 1 e 2, quando tudo era simulado, e **deixou de ser** na
+  /// Fase 4: com Firebase ligado a fotografia é enviada ao Cloud Storage. A
+  /// frase continuou na tela, afirmando ao usuário uma coisa sobre a
+  /// privacidade dele que o aplicativo já não cumpria.
+  ///
+  /// Uma promessa de privacidade errada é pior que nenhuma. O texto agora diz
+  /// só o que vale nos dois modos; para onde a imagem vai é assunto da política
+  /// de privacidade, que ainda precisa ser escrita e validada — ver
+  /// `security/PRIVACY.md`.
   static const String cameraPermissionBody =
-      'Precisamos da câmera apenas para capturar a foto que será analisada. '
-      'A imagem não sai do aparelho nesta versão.';
+      'Precisamos da câmera apenas para capturar a foto que será analisada.';
   static const String cameraPermissionAction = 'Permitir acesso';
   static const String cameraUnavailableTitle = 'Câmera indisponível';
   static const String cameraUnavailableBody =

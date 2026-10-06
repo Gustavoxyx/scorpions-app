@@ -14,8 +14,12 @@ abstract final class AppConfig {
   /// como marca.)
   static const String appTagline = 'Identificação científica de escorpiões';
 
-  static const String version = '0.2.0';
-  static const String phaseLabel = 'Fase 4 · Pipeline de imagem';
+  /// Mantida em sincronia com `version:` no `pubspec.yaml`.
+  ///
+  /// As duas tinham se separado — aqui `0.2.0`, lá `0.1.0` —, e cada arquivo
+  /// trazia um comentário dizendo que estava em sincronia com o outro.
+  static const String version = '0.3.0';
+  static const String phaseLabel = 'Fase 5 · Duas fotografias';
 
   /// Abre o aplicativo já autenticado, pulando onboarding e login.
   ///
