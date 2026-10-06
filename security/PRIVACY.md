@@ -20,7 +20,7 @@ Estes não são planos — são decisões já tomadas e verificáveis.
 | **Minimização** | uma única permissão (`CAMERA`), e marcada `required="false"`. Sem localização, sem identificador de aparelho, sem contatos, sem telemetria |
 | **Minimização, de novo** | 🟢 **EXIF e GPS removidos no aparelho, antes do envio.** A coordenada de onde a foto foi tirada **não sai do telefone** |
 | **Finalidade** | cada campo de `users/{uid}` e de `identifications/{id}` tem finalidade escrita em `DATA_MAP.md` |
-| **Segurança** | Security Rules por dono, cifra em repouso gerenciada, TLS, App Check, e testes automatizados de regras (72) e de backend (164) |
+| **Segurança** | Security Rules por dono, cifra em repouso gerenciada, TLS, App Check, e testes automatizados de regras (85) e de backend (177) |
 | **Controle de acesso** | o usuário A não alcança nada do usuário B — verificado por 60 testes contra o emulador |
 | **Opt-in** | `analyticsEnabled` nasce **falso**, e não há SDK de analytics instalado para ligar |
 | **Não treinar sem consentimento** | nenhuma foto de usuário entra em treinamento. A Fase 5 decidiu usar bancos públicos (iNaturalist/GBIF) justamente para que o modelo inicial não dependa de foto de ninguém |

@@ -60,13 +60,13 @@ cp .env.example .env    # e preencher
 python -m pytest tests/ -v
 ```
 
-São seis conjuntos, 164 testes. Nenhum fala com o Firebase de verdade — um
+São seis conjuntos, 177 testes. Nenhum fala com o Firebase de verdade — um
 teste de exclusão de conta contra o banco real apagaria dados para verificar que
 a exclusão apaga dados.
 
 | Arquivo | Testes | O que guarda |
 |---|---|---|
-| `test_security.py` | 34 | corpo com `confidence`, `role: admin`, `userId` alheio; travessia de caminho; papel desconhecido virando `admin` |
+| `test_security.py` | 47 | corpo com `confidence`, `role: admin`, `userId` alheio; travessia de caminho; papel desconhecido virando `admin` |
 | `test_endpoints.py` | 23 | as peças estão **ligadas**: `DELETE /v1/me` de fato pede senha, a análise de fato cobra cota, ninguém entra sem token |
 | `test_account.py` | 20 | a ordem da cascata; não tocar dado de outro usuário; falha parcial preserva a conta; reautenticação |
 | `test_quota.py` | 15 | o limite; a recusa não incrementa; falhar fechado |

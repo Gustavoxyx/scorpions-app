@@ -1,9 +1,22 @@
 # Scorpions — Identificação científica de escorpiões por IA
 
-> **Fase 4 — Pipeline real de imagem.** *(Fases 1, 2 e 3 concluídas.)*
-> A fotografia agora é **validada, medida, processada e enviada de verdade**.
-> O que ainda não existe é o modelo: uma identificação nova fica em
-> `processing`, e nenhuma espécie é inventada. A IA entra na Fase 5.
+> **Fase 5 — Duas fotografias, backend e direitos do titular.**
+> *(Fases 1 a 4 concluídas.)*
+>
+> O aplicativo captura **duas fotografias** da mesma identificação — a segunda
+> escolhida a partir do que foi medido na primeira —, envia as duas e sabe
+> fundir o que cada vista diz. Há um backend próprio que verifica o token, limita
+> o uso, apaga a conta em cascata e exporta os dados do titular.
+>
+> **O que ainda não existe é o modelo.** Nenhuma espécie é inventada: com
+> Firebase, uma identificação nova fica em `processing`. No modo de demonstração
+> o que cada foto "diz" é simulado e a tela avisa — a fusão e a decisão é que são
+> as de produção. Treinar e medir um classificador é o que falta da Fase 5; ver
+> [docs/FASE5_ARQUITETURA.md](docs/FASE5_ARQUITETURA.md).
+>
+> O backend roda só localmente. Enquanto não for publicado, exclusão de conta,
+> exportação e limite de uso existem no código e nos testes, mas nenhum usuário
+> as alcança — e a tela diz isso.
 >
 > Roda em três modos: `mock` (memória), `emulator` (local) e `firebase` (nuvem).
 > Ver [firebase/README.md](firebase/README.md).
@@ -249,14 +262,16 @@ havia pego.
 
 ### Integração contínua
 
-`.github/workflows/verificacao.yml` roda a cada envio, em dois trabalhos:
+`.github/workflows/verificacao.yml` roda a cada envio, em quatro trabalhos:
 
 | Trabalho | O que roda | Hoje |
 | --- | --- | --- |
-| Análise e testes do app | `flutter analyze` + `flutter test` | **156** testes |
-| Security Rules no emulador | Firestore + Storage + Auth emulados | **53** testes |
+| Análise e testes do app | `flutter analyze` + `flutter test` | **319** testes |
+| Backend de inferência | `pytest`, com os casos de paridade gerados pelo Dart | **177** testes |
+| Security Rules no emulador | Firestore + Storage + Auth emulados | **85** testes |
+| Segredos e dependências | Gitleaks no histórico inteiro + `pip-audit --strict` | bloqueia o envio |
 
-O segundo começa gerando `firebase/test/contract-shapes.json` **a partir dos
+O terceiro começa gerando `firebase/test/contract-shapes.json` **a partir dos
 modelos de produção** e só então roda as regras contra ele. A diferença não é
 cerimônia: enquanto os testes de regra usavam documentos escritos à mão, eles
 ficavam verdes com o cadastro quebrado — `AppUser.toCreateMap()` não enviava

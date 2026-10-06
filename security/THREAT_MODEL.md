@@ -192,7 +192,7 @@ do Firebase já entrega.
 ## O que este modelo não cobre
 
 - **Nenhum teste de intrusão foi feito.** As colunas "resultado" acima vêm de
-  ler as regras e de testes automatizados (72 de regras, 164 do backend), não
+  ler as regras e de testes automatizados (85 de regras, 177 do backend), não
   de alguém atacando o sistema de verdade.
 - Ataques à infraestrutura do Google estão fora do alcance de qualquer controle
   deste projeto.
