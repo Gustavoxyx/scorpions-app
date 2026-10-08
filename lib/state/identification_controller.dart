@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_strings.dart';
@@ -7,6 +9,7 @@ import '../data/models/identification.dart';
 import '../data/models/processed_image.dart';
 import '../data/models/secondary_view.dart';
 import '../data/repositories/identification_repository.dart';
+import '../data/services/capture_cleanup.dart';
 import '../data/services/capture_plan_service.dart';
 import '../data/services/demo_multi_view_service.dart';
 import '../data/services/failure.dart';
@@ -112,6 +115,7 @@ class IdentificationController extends ChangeNotifier {
     required this._pipeline,
     required this.demonstration,
     this._plan = const HeuristicCapturePlanService(),
+    this._cleanup = const NoopCaptureCleanup(),
     DemoMultiViewService? demoFusion,
   }) : _demoFusion = demoFusion ?? DemoMultiViewService();
 
@@ -123,6 +127,9 @@ class IdentificationController extends ChangeNotifier {
   /// quando houver modelo, a escolha possa passar a depender das espécies
   /// candidatas sem tocar em tela nenhuma.
   final CapturePlanService _plan;
+
+  /// Apaga do aparelho a fotografia que saiu do fluxo.
+  final CaptureCleanup _cleanup;
 
   /// Funde as duas vistas **no modo de demonstração**. Nunca é chamado com
   /// Firebase — ver [demonstration].
@@ -214,6 +221,7 @@ class IdentificationController extends ChangeNotifier {
 
   /// Descarta a segunda fotografia já tirada, para refazê-la ou seguir sem ela.
   void discardSecondImage() {
+    _discardFile(_secondImage);
     _secondImage = null;
     _secondPreparation = null;
     _capturingSecond = false;
@@ -228,26 +236,24 @@ class IdentificationController extends ChangeNotifier {
   /// havia sido pedida com base na anterior.
   void stageImage(CapturedImage image) {
     if (_capturingSecond) {
+      _discardFile(_secondImage);
       _secondImage = image;
       _secondPreparation = null;
       _capturingSecond = false;
     } else {
+      _discardFile(_pendingImage);
       _pendingImage = image;
       _preparation = null;
-      _secondImage = null;
-      _secondPreparation = null;
-      _secondInstruction = null;
+      _clearSecond();
     }
     _set(const IdentificationIdle());
   }
 
   void discardPendingImage() {
+    _discardFile(_pendingImage);
     _pendingImage = null;
     _preparation = null;
-    _secondImage = null;
-    _secondPreparation = null;
-    _secondInstruction = null;
-    _capturingSecond = false;
+    _clearSecond();
     _set(const IdentificationIdle());
   }
 
@@ -386,12 +392,10 @@ class IdentificationController extends ChangeNotifier {
   }
 
   void reset() {
+    _discardFile(_pendingImage);
     _pendingImage = null;
     _preparation = null;
-    _secondImage = null;
-    _secondPreparation = null;
-    _secondInstruction = null;
-    _capturingSecond = false;
+    _clearSecond();
     _lastResult = null;
     _set(const IdentificationIdle());
   }
@@ -484,6 +488,24 @@ class IdentificationController extends ChangeNotifier {
     _set(combinado.isRejected
         ? IdentificationRejected(combinado)
         : IdentificationSuccess(combinado));
+  }
+
+  /// Esquece a segunda fotografia por inteiro.
+  ///
+  /// Num lugar só de propósito. Eram quatro campos zerados à mão em três
+  /// métodos, e esquecer um deles já produziu um defeito: a primeira foto de
+  /// uma identificação anexada como segunda da anterior.
+  void _clearSecond() {
+    _discardFile(_secondImage);
+    _secondImage = null;
+    _secondPreparation = null;
+    _secondInstruction = null;
+    _capturingSecond = false;
+  }
+
+  void _discardFile(CapturedImage? image) {
+    if (image == null) return;
+    unawaited(_cleanup.discard(image));
   }
 
   void _etapa(CapturedImage image, PipelineStage stage) {

@@ -77,14 +77,20 @@ class DefaultImageProcessingService implements ImageProcessingService {
     const ImageQualityService medidor = StatisticalImageQualityService();
     final ImageQualityResult qualidade = medidor.assess(endireitada);
 
-    final ImageVariant original = precisaGirar
-        // O arquivo pedia rotação. Apagar o EXIF apagaria esse pedido junto e
-        // deixaria o original deitado, então aqui a recompressão é obrigatória:
-        // gravamos os pixels já de pé, em qualidade alta.
+    // O arquivo pedia rotação? Apagar o EXIF apagaria esse pedido junto e
+    // deixaria o original deitado, então ali a recompressão é obrigatória.
+    //
+    // Fora isso, os metadados saem sem tocar nos pixels — em JPEG, PNG e WebP.
+    // `strip` devolve nulo quando não consegue GARANTIR que o arquivo saiu
+    // limpo (formato fora do padrão, bloco truncado), e esse caso também é
+    // recomprimido: perde um pouco de qualidade, mas não sobe com a localização
+    // de alguém dentro.
+    final Uint8List? limpo = precisaGirar ? null : MetadataStripper.strip(bytes);
+
+    final ImageVariant original = limpo == null
         ? _encodar(endireitada, ImageLimits.originalQuality)
-        // Não girou: os pixels sobrevivem intactos, só os metadados somem.
         : ImageVariant(
-            bytes: MetadataStripper.strip(bytes),
+            bytes: limpo,
             width: endireitada.width,
             height: endireitada.height,
             format: validacao.format ?? ImageFormat.jpeg,
@@ -136,7 +142,7 @@ class DefaultImageProcessingService implements ImageProcessingService {
         original: original,
         processed: processada,
         thumbnail: miniatura,
-        originalWasReencoded: precisaGirar,
+        originalWasReencoded: limpo == null,
       ),
     );
   }

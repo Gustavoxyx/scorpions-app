@@ -7,6 +7,7 @@ import '../core/constants/app_config.dart';
 import '../core/theme/app_theme.dart';
 import '../data/repositories/species_repository.dart';
 import '../data/services/camera_service.dart';
+import '../data/services/capture_cleanup.dart';
 import '../data/services/gallery_service.dart';
 import '../data/services/identification_service.dart';
 import '../state/auth_controller.dart';
@@ -54,6 +55,11 @@ class _ScorpionsAppState extends State<ScorpionsApp> {
     repository: _deps.identificationRepository,
     pipeline: _deps.pipeline,
     demonstration: !_deps.mode.usesFirebase,
+    // No modo de demonstração o histórico vive na memória e aponta para o
+    // arquivo local; apagá-lo apagaria a foto do histórico.
+    cleanup: _deps.mode.usesFirebase
+        ? const FileCaptureCleanup()
+        : const NoopCaptureCleanup(),
   );
   // O histórico observa a sessão: ao trocar de usuário a lista é recarregada,
   // e no logout é esvaziada. Sem isso, o próximo usuário do mesmo aparelho

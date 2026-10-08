@@ -5,9 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../core/observability/app_log.dart';
 import '../models/capture_instruction.dart';
 import '../models/captured_image.dart';
-import '../models/classification.dart';
-import '../models/detection.dart';
 import '../models/identification.dart';
+import '../models/identification_session.dart';
 import '../models/processed_image.dart';
 import '../models/secondary_view.dart';
 import '../repositories/auth_repository.dart';
@@ -17,8 +16,7 @@ import 'failure.dart';
 import 'image_bytes_reader.dart';
 import 'image_processing_service.dart';
 import 'image_upload_service.dart';
-import 'scorpion_detection_service.dart';
-import 'species_classification_service.dart';
+import 'multi_view_analysis_service.dart';
 
 /// Etapas visíveis do pipeline (briefing Fase 4, §15).
 ///
@@ -113,8 +111,7 @@ class IdentificationPipeline {
     required this._uploader,
     required this._connectivity,
     this.requireVerifiedEmail = false,
-    this.detector = const MockScorpionDetectionService(),
-    this.classifier = const MockSpeciesClassificationService(),
+    this.analyzer = const MultiViewAnalysisService(),
   });
 
   final AuthRepository _auth;
@@ -131,10 +128,13 @@ class IdentificationPipeline {
   /// fazer. No modo simulado fica desligado — ali não há e-mail para confirmar.
   final bool requireVerifiedEmail;
 
-  /// Contratos da Fase 5. Públicos porque um teste precisa poder trocar o
-  /// dublê sem reconstruir o pipeline inteiro.
-  final ScorpionDetectionService detector;
-  final SpeciesClassificationService classifier;
+  /// Onde a identificação por modelo entra.
+  ///
+  /// Recebe a sessão inteira — uma ou duas vistas — e devolve a conclusão. Hoje
+  /// é o analisador de fusão tardia montado sobre dublês que respondem "não
+  /// avaliado"; a fase da IA troca o que está atrás desta interface, e nada
+  /// acima dela muda.
+  final IdentificationAnalyzer analyzer;
 
   bool _cancelled = false;
 
@@ -314,12 +314,28 @@ class IdentificationPipeline {
     }
 
     onStage?.call(PipelineStage.awaitingAnalysis);
-    // Em paralelo, pelo mesmo motivo do envio: analisar a foto de cima não
-    // precisa de nada que venha do close da cauda.
-    await Future.wait<void>(<Future<void>>[
-      if (processada != null) _prepararAnalise(processada),
-      if (segundaProcessada != null) _prepararAnalise(segundaProcessada),
-    ]);
+    await _analisar(
+      IdentificationSession(
+        id: id,
+        userId: uid,
+        status: SessionStatus.processing,
+        createdAt: DateTime.now(),
+        primary: SessionView(
+          instruction: ImageCaptureInstruction.primary,
+          image: image,
+          quality: preparation.quality,
+          processed: processada,
+        ),
+        secondary: secondary == null
+            ? null
+            : SessionView(
+                instruction: secondary.instruction,
+                image: secondary.image,
+                quality: secondary.preparation.quality,
+                processed: segundaProcessada,
+              ),
+      ),
+    );
 
     return PipelineOutcome.completed(registro);
   }
@@ -380,20 +396,20 @@ class IdentificationPipeline {
 
   // -- Interno ----------------------------------------------------------------
 
-  /// Chama os contratos da Fase 5 já no lugar certo do fluxo.
+  /// Entrega a sessão ao analisador, no lugar do fluxo onde o modelo vai
+  /// trabalhar.
   ///
-  /// Hoje ambos respondem "não avaliado" e nada é gravado a partir disso. A
-  /// chamada existe para que a Fase 5 seja preencher a implementação, e não
-  /// descobrir onde encaixá-la.
-  Future<void> _prepararAnalise(ProcessedImage imagem) async {
-    final ScorpionDetectionResult deteccao = await detector.detect(imagem);
-    final ClassificationResult classificacao =
-        await classifier.classify(imagem);
+  /// Hoje ele responde "não avaliado" e nada é gravado a partir disso. O
+  /// `assert` é a guarda contra o atalho mais tentador deste projeto: um
+  /// analisador de mentira que passa a inventar resposta, e cujo resultado
+  /// seguiria adiante como se fosse de modelo.
+  Future<void> _analisar(IdentificationSession sessao) async {
+    final MultiViewAnalysis analise = await analyzer.analyse(sessao);
 
     assert(
-      !deteccao.wasEvaluated && !classificacao.wasEvaluated,
-      'Nesta fase nenhum modelo existe. Um resultado avaliado aqui significa '
-      'que um placeholder comecou a inventar resposta — ver briefing §12.',
+      !analise.wasEvaluated,
+      'Nenhum modelo existe nesta fase. Uma análise avaliada aqui significa '
+      'que um dublê começou a inventar resposta.',
     );
   }
 

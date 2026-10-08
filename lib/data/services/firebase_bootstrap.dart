@@ -147,6 +147,19 @@ abstract final class FirebaseBootstrap {
   /// O reCAPTCHA da web precisa de uma chave de site, criada junto do projeto
   /// real — enquanto ela não existir, a web fica sem App Check em vez de
   /// falhar a inicialização.
+  /// O token do App Check desta instalação, ou nulo se não houver.
+  ///
+  /// Nunca lança: sem provedor registrado no console a chamada falha, e isso
+  /// não pode impedir uma operação de conta enquanto o servidor não exige o
+  /// token.
+  static Future<String?> appCheckToken() async {
+    try {
+      return await FirebaseAppCheck.instance.getToken();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> _activateAppCheck() async {
     try {
       await FirebaseAppCheck.instance.activate(

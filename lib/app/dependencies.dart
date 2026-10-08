@@ -9,6 +9,7 @@ import '../data/repositories/mock_auth_repository.dart';
 import '../data/repositories/species_repository.dart';
 import '../data/services/backend_client.dart';
 import '../data/services/connectivity_service.dart';
+import '../data/services/firebase_bootstrap.dart';
 import '../data/services/identification_pipeline.dart';
 import '../data/services/image_processing_service.dart';
 import '../data/services/image_upload_service.dart';
@@ -62,6 +63,12 @@ class AppDependencies {
       HttpBackendClient(
         idToken: ({bool forceRefresh = false}) =>
             auth.idToken(forceRefresh: forceRefresh),
+        // Só contra a nuvem: no emulador e no modo simulado o App Check não é
+        // ativado, e pedir um token ali seria pedir um erro.
+        appCheckToken:
+            AppEnvironmentConfig.dataSource == DataSourceMode.firebase
+                ? FirebaseBootstrap.appCheckToken
+                : null,
       ),
     );
   }

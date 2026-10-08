@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scorpions/data/models/classification.dart';
 import 'package:image/image.dart' as img;
 import 'package:scorpions/core/constants/image_limits.dart';
 import 'package:scorpions/data/models/capture_instruction.dart';
@@ -309,4 +310,59 @@ Uint8List _foto() {
   return Uint8List.fromList(
     img.encodeJpg(imagem, quality: ImageLimits.originalQuality),
   );
+}
+
+/// Classificador de teste que devolve scores escritos à mão.
+///
+/// Vive aqui, e não em `test/`, porque o modo de demonstração também precisa
+/// dele: sem Firebase e sem modelo, é o que permite percorrer o fluxo inteiro
+/// numa apresentação.
+///
+/// # O selo que ele carrega
+/// `isMock: true` e `modelVersion` com prefixo `mock-`. Nada que sai daqui
+/// pode ser confundido com saída de modelo, nem no banco nem na tela — a
+/// mesma trava que a Fase 4 estabeleceu, e que o §12 do briefing exige.
+class ScriptedClassificationService implements SpeciesClassificationService {
+  ScriptedClassificationService(this.scoresPorChamada);
+
+  /// Um mapa espécie → score por chamada, na ordem em que forem pedidos.
+  /// Esgotada a lista, devolve o último — para que um teste com uma vista só
+  /// não precise repetir a entrada.
+  final List<Map<String, double>> scoresPorChamada;
+
+  /// Contador de instância, não estático.
+  ///
+  /// A primeira versão deste dublê guardava a posição num `static`, e isso é
+  /// uma armadilha: os arquivos de teste rodam em paralelo, e dois testes
+  /// usando o dublê ao mesmo tempo consumiriam o mesmo contador. A falha
+  /// resultante seria intermitente e apareceria como "a fusão às vezes usa os
+  /// scores errados" — o pior tipo de defeito para investigar.
+  int _chamada = 0;
+
+  @override
+  Future<ClassificationResult> classify(ProcessedImage image) async {
+    if (scoresPorChamada.isEmpty) {
+      return const ClassificationResult.notEvaluated();
+    }
+    final Map<String, double> scores = scoresPorChamada[
+        _chamada < scoresPorChamada.length
+            ? _chamada++
+            : scoresPorChamada.length - 1];
+
+    final List<MapEntry<String, double>> ordenado = scores.entries.toList()
+      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
+          b.value.compareTo(a.value));
+
+    return ClassificationResult(
+      modelVersion: ClassificationResult.mockVersion,
+      isMock: true,
+      candidates: ordenado
+          .map((MapEntry<String, double> e) => SpeciesCandidate(
+                speciesId: e.key,
+                scientificName: e.key,
+                confidence: e.value,
+              ))
+          .toList(growable: false),
+    );
+  }
 }

@@ -88,6 +88,7 @@ class HttpBackendClient implements BackendClient {
   // resto do projeto já usa esta forma —, e o lint estava certo.
   HttpBackendClient({
     required this._idToken,
+    this._appCheckToken,
     String? baseUrl,
     this._timeout = const Duration(seconds: 30),
   })  :
@@ -98,6 +99,13 @@ class HttpBackendClient implements BackendClient {
             .replaceAll(RegExp(r'/+$'), '');
 
   final IdTokenProvider _idToken;
+
+  /// Token do App Check, quando o aplicativo roda contra o Firebase de verdade.
+  ///
+  /// Nulo no modo simulado e no emulador. Enviado quando existe; se o servidor
+  /// exige ou não, é configuração dele.
+  final Future<String?> Function()? _appCheckToken;
+
   final String _baseUrl;
   final Duration _timeout;
 
@@ -165,6 +173,10 @@ class HttpBackendClient implements BackendClient {
           .timeout(_timeout);
 
       pedido.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      final String? appCheck = await _appCheckToken?.call();
+      if (appCheck != null && appCheck.isNotEmpty) {
+        pedido.headers.set('X-Firebase-AppCheck', appCheck);
+      }
       pedido.headers.set(HttpHeaders.acceptHeader, 'application/json');
 
       if (corpo != null) {

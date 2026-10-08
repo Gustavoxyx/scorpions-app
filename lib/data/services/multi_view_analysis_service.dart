@@ -67,6 +67,21 @@ class MultiViewAnalysis {
       };
 }
 
+/// O contrato da análise: uma **sessão inteira** entra, uma conclusão sai.
+///
+/// # Por que a sessão, e não a imagem
+/// O pipeline chamava um classificador por imagem. Esse nível só comporta
+/// fusão tardia — classificar cada foto sozinha e combinar depois. Um modelo
+/// que recebe as duas fotos juntas não cabe num contrato que entrega uma de
+/// cada vez.
+///
+/// Neste nível cabem as quatro combinações que a fase da IA ainda vai decidir:
+/// fusão tardia ou modelo conjunto, no aparelho ou no servidor. É também o
+/// nível do `POST /v1/analyses`, que recebe a sessão e suas vistas.
+abstract interface class IdentificationAnalyzer {
+  Future<MultiViewAnalysis> analyse(IdentificationSession session);
+}
+
 /// Roda a análise sobre as vistas de uma sessão (§6, §7, §8, §9, §12).
 ///
 /// # Por que as vistas rodam em paralelo
@@ -85,7 +100,7 @@ class MultiViewAnalysis {
 /// fundir, e a decisão diz que nada foi avaliado. Nenhuma espécie falsa
 /// atravessa este caminho — é a mesma garantia da Fase 4, agora com duas
 /// imagens.
-class MultiViewAnalysisService {
+class MultiViewAnalysisService implements IdentificationAnalyzer {
   const MultiViewAnalysisService({
     this.detector = const MockScorpionDetectionService(),
     this.classifier = const MockSpeciesClassificationService(),
@@ -100,6 +115,7 @@ class MultiViewAnalysisService {
   final ConfidenceEngine confidence;
   final FusionStrategy strategy;
 
+  @override
   Future<MultiViewAnalysis> analyse(IdentificationSession session) async {
     final List<SessionView> vistas = session.analysableViews;
     if (vistas.isEmpty) return const MultiViewAnalysis.notEvaluated();
@@ -172,60 +188,4 @@ class _ViewOutcome {
 
   final ScorpionDetectionResult detection;
   final ViewPrediction prediction;
-}
-
-/// Classificador de teste que devolve scores escritos à mão.
-///
-/// Vive aqui, e não em `test/`, porque o modo de demonstração também precisa
-/// dele: sem Firebase e sem modelo, é o que permite percorrer o fluxo inteiro
-/// numa apresentação.
-///
-/// # O selo que ele carrega
-/// `isMock: true` e `modelVersion` com prefixo `mock-`. Nada que sai daqui
-/// pode ser confundido com saída de modelo, nem no banco nem na tela — a
-/// mesma trava que a Fase 4 estabeleceu, e que o §12 do briefing exige.
-@visibleForTesting
-class ScriptedClassificationService implements SpeciesClassificationService {
-  ScriptedClassificationService(this.scoresPorChamada);
-
-  /// Um mapa espécie → score por chamada, na ordem em que forem pedidos.
-  /// Esgotada a lista, devolve o último — para que um teste com uma vista só
-  /// não precise repetir a entrada.
-  final List<Map<String, double>> scoresPorChamada;
-
-  /// Contador de instância, não estático.
-  ///
-  /// A primeira versão deste dublê guardava a posição num `static`, e isso é
-  /// uma armadilha: os arquivos de teste rodam em paralelo, e dois testes
-  /// usando o dublê ao mesmo tempo consumiriam o mesmo contador. A falha
-  /// resultante seria intermitente e apareceria como "a fusão às vezes usa os
-  /// scores errados" — o pior tipo de defeito para investigar.
-  int _chamada = 0;
-
-  @override
-  Future<ClassificationResult> classify(ProcessedImage image) async {
-    if (scoresPorChamada.isEmpty) {
-      return const ClassificationResult.notEvaluated();
-    }
-    final Map<String, double> scores = scoresPorChamada[
-        _chamada < scoresPorChamada.length
-            ? _chamada++
-            : scoresPorChamada.length - 1];
-
-    final List<MapEntry<String, double>> ordenado = scores.entries.toList()
-      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
-          b.value.compareTo(a.value));
-
-    return ClassificationResult(
-      modelVersion: ClassificationResult.mockVersion,
-      isMock: true,
-      candidates: ordenado
-          .map((MapEntry<String, double> e) => SpeciesCandidate(
-                speciesId: e.key,
-                scientificName: e.key,
-                confidence: e.value,
-              ))
-          .toList(growable: false),
-    );
-  }
 }
