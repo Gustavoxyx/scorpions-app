@@ -266,9 +266,9 @@ havia pego.
 
 | Trabalho | O que roda | Hoje |
 | --- | --- | --- |
-| Análise e testes do app | `flutter analyze` + `flutter test` | **319** testes |
-| Backend de inferência | `pytest`, com os casos de paridade gerados pelo Dart | **177** testes |
-| Security Rules no emulador | Firestore + Storage + Auth emulados | **85** testes |
+| Análise e testes do app | `flutter analyze` + `flutter test` | **355** testes |
+| Backend de inferência | `pytest`, com os casos de paridade gerados pelo Dart | **219** testes |
+| Security Rules no emulador | Firestore + Storage + Auth emulados | **110** testes |
 | Segredos e dependências | Gitleaks no histórico inteiro + `pip-audit --strict` | bloqueia o envio |
 
 O terceiro começa gerando `firebase/test/contract-shapes.json` **a partir dos
