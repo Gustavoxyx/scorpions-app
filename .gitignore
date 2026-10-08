@@ -65,6 +65,11 @@ ui-debug.log
 google-services.json
 GoogleService-Info.plist
 
+# Assinatura de release — a chave e as senhas dela
+android/key.properties
+*.jks
+*.keystore
+
 # Backend de inferência
 backend/.venv/
 backend/venv/

@@ -1,0 +1,12 @@
+# Modelo. Copie para `android/key.properties` e preencha.
+#
+# `key.properties` e a keystore NUNCA entram no git — os dois estão no
+# `.gitignore`. Quem perde a keystore ou a senha não consegue mais publicar
+# atualização deste aplicativo: guarde uma cópia fora deste computador.
+#
+# `storeFile` é relativo a `android/app/`. Prefira um caminho fora do projeto.
+
+storeFile=C:/caminho/fora/do/projeto/scorpions-release.jks
+storePassword=
+keyAlias=scorpions
+keyPassword=

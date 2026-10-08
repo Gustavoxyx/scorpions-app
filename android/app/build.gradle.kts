@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -6,6 +8,31 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// -----------------------------------------------------------------------------
+// Chave de release
+// -----------------------------------------------------------------------------
+// Lida de `android/key.properties`, que NÃO é versionado (ver `.gitignore` e
+// `android/key.properties.example`). Nenhuma senha, nenhum caminho de keystore
+// e nenhum alias moram neste arquivo.
+//
+// O release era assinado com a chave de DEBUG. Essa chave é igual em toda
+// instalação do SDK do Android, com senha pública: quem instalasse um APK
+// assinado assim aceitaria "atualização" de qualquer pessoa. A Play Store
+// recusa, com razão.
+val keystoreProperties = Properties()
+val keystoreFile = rootProject.file("key.properties")
+if (keystoreFile.exists()) {
+    keystoreFile.inputStream().use { keystoreProperties.load(it) }
+}
+
+val hasReleaseKey = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
+
+// Saída de emergência para quem só quer medir o tamanho do APK ou testar o
+// build de release num aparelho próprio, sem ter a chave. Explícita e por
+// variável de ambiente, para nunca acontecer por esquecimento.
+val allowDebugSigning = System.getenv("SCORPIONS_ALLOW_DEBUG_SIGNING") == "1"
 
 android {
     namespace = "com.scorpionslabs.scorpions"
@@ -67,12 +94,56 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = when {
+                hasReleaseKey -> signingConfigs.getByName("release")
+                allowDebugSigning -> signingConfigs.getByName("debug")
+                // Sem chave e sem a saída de emergência, o build é interrompido
+                // logo abaixo, antes de produzir qualquer coisa.
+                else -> null
+            }
         }
+    }
+}
+
+// Um release sem chave própria não é produzido em silêncio.
+gradle.taskGraph.whenReady {
+    val pedeRelease = allTasks.any {
+        it.project == project &&
+            Regex("(assemble|bundle|package|install).*Release").matches(it.name)
+    }
+    if (pedeRelease && !hasReleaseKey && !allowDebugSigning) {
+        throw GradleException(
+            """
+            |
+            |Build de release sem chave de assinatura.
+            |
+            |  Para publicar: crie `android/key.properties` a partir de
+            |  `android/key.properties.example`, apontando para a sua keystore.
+            |  O passo a passo está em docs/FASE0_PREPARACAO_IA.md.
+            |
+            |  Só para medir o APK ou testar no seu aparelho, sem publicar:
+            |      SCORPIONS_ALLOW_DEBUG_SIGNING=1 flutter build apk --release
+            |  O arquivo sai assinado com a chave de debug e NÃO serve para
+            |  distribuição.
+            |
+            """.trimMargin()
+        )
+    }
+    if (pedeRelease && !hasReleaseKey && allowDebugSigning) {
+        logger.warn("AVISO: release assinado com a chave de DEBUG. Não distribua este arquivo.")
     }
 }
 

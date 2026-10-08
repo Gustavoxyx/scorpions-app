@@ -1,9 +1,28 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- A camera e usada apenas para capturar a foto que sera analisada. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Camera opcional: o app funciona (via galeria) em aparelhos sem ela. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- Permissoes que o plugin de camera declara e este aplicativo nao usa.
+
+         RECORD_AUDIO: a camera e aberta com `enableAudio: false` e nada aqui
+         grava som. Declarada, ela aparece na ficha da loja e na tela de
+         permissoes do sistema como "microfone", para um aplicativo que
+         fotografa escorpioes.
+
+         WRITE_EXTERNAL_STORAGE: a captura e gravada no cache interno do
+         aplicativo, que nao precisa de permissao. READ_EXTERNAL_STORAGE vinha
+         junto, implicada pela de escrita; a galeria e aberta pelo seletor do
+         sistema, que tambem nao precisa dela.
+
+         `tools:node="remove"` tira a declaracao na mesclagem dos manifestos.
+         Se uma versao futura passar a gravar video com som, esta linha sai. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
 
     <application
         android:label="Scorpions"
