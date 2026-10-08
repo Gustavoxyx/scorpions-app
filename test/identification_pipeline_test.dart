@@ -49,6 +49,7 @@ class _AuthFalso implements AuthRepository {
     required String name,
     required String email,
     required String password,
+    String? privacyVersion,
   }) =>
       throw UnimplementedError();
 

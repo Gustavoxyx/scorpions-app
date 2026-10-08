@@ -32,8 +32,18 @@ abstract final class AppRoutes {
 
   static const String photoTips = '/guide/photo-tips';
 
+  static const String privacy = '/legal/privacy';
+  static const String terms = '/legal/terms';
+
   static const String speciesPattern = '/species/:id';
   static String species(String id) => '/species/$id';
+
+  /// Telas abertas a qualquer pessoa, com ou sem sessão.
+  ///
+  /// Diferentes de [publicRoutes], de onde quem já entrou é mandado embora.
+  /// O aviso de privacidade precisa ser legível por quem está se cadastrando
+  /// **e** por quem já tem conta.
+  static const Set<String> openRoutes = <String>{privacy, terms};
 
   /// Telas em que um usuário não autenticado pode legitimamente estar.
   static const Set<String> publicRoutes = <String>{

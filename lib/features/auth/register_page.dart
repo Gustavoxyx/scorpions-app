@@ -14,6 +14,10 @@ import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/feedback_states.dart';
 import '../../state/auth_controller.dart';
 import 'widgets/auth_error_banner.dart';
+import 'package:go_router/go_router.dart';
+import '../../app/dependencies.dart';
+import '../../app/router/app_routes.dart';
+import '../../core/constants/legal_documents.dart';
 
 /// Criação de conta.
 ///
@@ -36,6 +40,13 @@ class _RegisterPageState extends State<RegisterPage> {
 
   double _strength = 0;
 
+  /// Se a pessoa marcou que leu e aceita o aviso de privacidade.
+  bool _aceitou = false;
+
+  /// Se tentou criar a conta sem marcar. Só então a cobrança aparece: um aviso
+  /// em vermelho numa tela que acabou de abrir acusa quem ainda não errou.
+  bool _faltouAceite = false;
+
   @override
   void dispose() {
     _name.dispose();
@@ -47,11 +58,15 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final bool camposValidos = _formKey.currentState?.validate() ?? false;
+    setState(() => _faltouAceite = !_aceitou);
+    if (!camposValidos || !_aceitou) return;
+
     await context.read<AuthController>().signUp(
           name: _name.text.trim(),
           email: _email.text.trim(),
           password: _password.text,
+          privacyVersion: LegalDocuments.privacyVersion,
         );
   }
 
@@ -126,12 +141,27 @@ class _RegisterPageState extends State<RegisterPage> {
               onSubmitted: (_) => _submit(),
             ),
             AppSpacing.gapXl,
-            const DisclaimerBanner(
-              message:
-                  'Nesta versão de demonstração nenhum dado é enviado a um '
-                  'servidor: a conta existe apenas na memória do aparelho.',
-              icon: Icons.shield_outlined,
+            _ConsentTile(
+              accepted: _aceitou,
+              showError: _faltouAceite && !_aceitou,
+              onChanged: (bool v) => setState(() {
+                _aceitou = v;
+                if (v) _faltouAceite = false;
+              }),
+              onRead: () => context.push(AppRoutes.privacy),
             ),
+            // Só no modo de demonstração, que é quando a frase é verdadeira.
+            // Ela era exibida sempre, e com Firebase a conta vai para o
+            // servidor: uma promessa de privacidade errada é pior que nenhuma.
+            if (!context.read<AppDependencies>().mode.usesFirebase) ...<Widget>[
+              AppSpacing.gapLg,
+              const DisclaimerBanner(
+                message:
+                    'Nesta versão de demonstração nenhum dado é enviado a um '
+                    'servidor: a conta existe apenas na memória do aparelho.',
+                icon: Icons.shield_outlined,
+              ),
+            ],
             AppSpacing.gapXl,
             AppButton(
               label: AppStrings.signUp,
@@ -148,6 +178,75 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 /// Indicador de força da senha. É orientação, não bloqueio.
+/// O aceite do aviso de privacidade.
+///
+/// O texto do aviso fica a um toque, e não escondido atrás de um link no
+/// rodapé: aceitar algo que não se pôde ler não é aceitar.
+class _ConsentTile extends StatelessWidget {
+  const _ConsentTile({
+    required this.accepted,
+    required this.showError,
+    required this.onChanged,
+    required this.onRead,
+  });
+
+  final bool accepted;
+  final bool showError;
+  final ValueChanged<bool> onChanged;
+  final VoidCallback onRead;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors c = context.colors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Checkbox(
+              key: const ValueKey<String>('cadastro-aceite'),
+              value: accepted,
+              onChanged: (bool? v) => onChanged(v ?? false),
+            ),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(!accepted),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Li o aviso de privacidade e concordo com o tratamento '
+                    'dos meus dados descrito nele.',
+                    style: context.text.body,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey<String>('cadastro-ler-aviso'),
+            onPressed: onRead,
+            child: const Text('Ler o aviso de privacidade'),
+          ),
+        ),
+        if (showError)
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              'Para criar a conta é preciso ler e aceitar o aviso.',
+              style: context.text.bodySmall.copyWith(color: c.error),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _StrengthBar extends StatelessWidget {
   const _StrengthBar({required this.value});
 

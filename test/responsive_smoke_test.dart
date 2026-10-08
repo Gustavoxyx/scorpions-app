@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
+import 'package:scorpions/app/dependencies.dart';
 import 'package:scorpions/core/theme/app_theme.dart';
 import 'package:scorpions/data/mock/mock_history.dart';
 import 'package:scorpions/data/mock/mock_species.dart';
@@ -103,6 +104,9 @@ void main() {
             auth: auth,
           ),
         ),
+        // Como em `app.dart`: a tela de cadastro consulta o modo de execução
+        // para decidir se mostra o aviso de demonstração.
+        Provider<AppDependencies>(create: (_) => AppDependencies.mock()),
       ],
       child: MaterialApp(
         theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),

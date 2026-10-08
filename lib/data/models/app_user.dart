@@ -26,6 +26,7 @@ class AppUser {
     this.memberSince,
     this.updatedAt,
     this.emailVerified = false,
+    this.privacyVersion,
   });
 
   /// UID do Firebase Authentication. É a chave do documento no Firestore.
@@ -67,6 +68,11 @@ class AppUser {
   /// aparecer (MEDIUM-3 da auditoria).
   final bool emailVerified;
 
+  /// Versão do aviso de privacidade que a pessoa aceitou, se aceitou.
+  ///
+  /// Nulo em contas criadas antes de o aceite existir.
+  final String? privacyVersion;
+
   String get firstName => Formatters.firstName(name);
   String get initials => Formatters.initials(name);
 
@@ -87,6 +93,7 @@ class AppUser {
       speciesSeenCount: FirestoreCodec.integer(map['speciesSeenCount']),
       memberSince: FirestoreCodec.dateTime(map['createdAt']),
       updatedAt: FirestoreCodec.dateTime(map['updatedAt']),
+      privacyVersion: FirestoreCodec.stringOrNull(map['privacyVersion']),
     );
   }
 
@@ -108,6 +115,13 @@ class AppUser {
         'role': UserRole.user.id,
         'createdAt': FirestoreCodec.serverTimestamp,
         'updatedAt': FirestoreCodec.serverTimestamp,
+        // O aceite só é gravado quando houve um. Os dois campos andam juntos,
+        // e o momento é o do servidor: as regras recusam um carimbo escolhido
+        // pelo aparelho.
+        if (privacyVersion != null) ...<String, Object?>{
+          'privacyVersion': privacyVersion,
+          'consentAt': FirestoreCodec.serverTimestamp,
+        },
       };
 
   /// Campos que o próprio usuário pode alterar depois.
@@ -136,6 +150,7 @@ class AppUser {
       memberSince: memberSince,
       updatedAt: updatedAt,
       emailVerified: emailVerified ?? this.emailVerified,
+      privacyVersion: privacyVersion,
     );
   }
 }

@@ -100,7 +100,6 @@ class SettingsPage extends StatelessWidget {
           ),
           AppSpacing.gapXxl,
 
-          // Itens que dependem de fases futuras.
           AppSection(
             title: 'Legal',
             icon: Icons.gavel_rounded,
@@ -109,14 +108,15 @@ class SettingsPage extends StatelessWidget {
                 AppNavTile(
                   label: AppStrings.settingsPrivacy,
                   icon: Icons.privacy_tip_outlined,
-                  value: AppStrings.soon,
-                  onTap: () => _soon(context),
+                  onTap: () => context.push(AppRoutes.privacy),
                 ),
+                // Os termos ainda não foram publicados. A tela diz isso — e
+                // diz de quem depende — em vez de um "em breve" sem explicação.
                 AppNavTile(
                   label: AppStrings.settingsTerms,
                   icon: Icons.description_outlined,
                   value: AppStrings.soon,
-                  onTap: () => _soon(context),
+                  onTap: () => context.push(AppRoutes.terms),
                 ),
               ],
             ),
@@ -131,12 +131,6 @@ class SettingsPage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  void _soon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(AppStrings.comingSoon)),
     );
   }
 }

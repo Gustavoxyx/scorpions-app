@@ -56,6 +56,11 @@ class FirebaseAuthRepository implements AuthRepository {
   /// aplicativo ainda não tem tela para renomear.
   String? _pendingName;
 
+  /// A versão do aviso aceita no cadastro em andamento. Mesma razão de
+  /// [_pendingName]: o perfil pode ser criado pelo ouvinte de sessão antes de
+  /// `signUp` chegar lá.
+  String? _pendingPrivacyVersion;
+
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
 
@@ -89,8 +94,10 @@ class FirebaseAuthRepository implements AuthRepository {
     required String name,
     required String email,
     required String password,
+    String? privacyVersion,
   }) async {
     _pendingName = name.trim();
+    _pendingPrivacyVersion = privacyVersion;
     try {
       return await FirebaseErrorMapper.guard(() async {
         final fb.UserCredential credential =
@@ -121,6 +128,7 @@ class FirebaseAuthRepository implements AuthRepository {
       });
     } finally {
       _pendingName = null;
+      _pendingPrivacyVersion = null;
     }
   }
 
@@ -280,6 +288,7 @@ class FirebaseAuthRepository implements AuthRepository {
           ? user.displayName!.trim()
           : fallbackName,
       email: user.email ?? '',
+      privacyVersion: _pendingPrivacyVersion,
     );
 
     await ref.set(FirestoreWriteMapper.prepare(profile.toCreateMap()));

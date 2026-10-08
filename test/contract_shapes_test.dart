@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scorpions/core/constants/legal_documents.dart';
 
 import 'package:scorpions/data/mock/mock_species.dart';
 import 'package:scorpions/data/models/app_user.dart';
@@ -35,6 +36,9 @@ void main() {
       id: 'uid-alice',
       name: 'Alice',
       email: 'alice@exemplo.test',
+      // O cadastro sai da tela com o aceite do aviso de privacidade; a forma
+      // conferida contra as regras precisa ser a que o aplicativo de fato grava.
+      privacyVersion: LegalDocuments.privacyVersion,
     );
 
     // -- identifications/{id}: identificada -----------------------------------

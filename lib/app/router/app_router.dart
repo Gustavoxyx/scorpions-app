@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/constants/legal_documents.dart';
 import '../../core/widgets/feedback_states.dart';
 import '../../data/models/species.dart';
 import '../../features/auth/forgot_password_page.dart';
@@ -15,6 +16,7 @@ import '../../features/home/photo_tips_page.dart';
 import '../../features/identification/analyzing_page.dart';
 import '../../features/identification/result_page.dart';
 import '../../features/identification/unidentified_page.dart';
+import '../../features/legal/legal_document_page.dart';
 import '../../features/onboarding/onboarding_page.dart';
 import '../../features/profile/about_page.dart';
 import '../../features/profile/profile_page.dart';
@@ -206,6 +208,24 @@ abstract final class AppRouter {
               .forward(key: s.pageKey, child: const PhotoTipsPage()),
         ),
         GoRoute(
+          path: AppRoutes.privacy,
+          parentNavigatorKey: _rootKey,
+          pageBuilder: (BuildContext c, GoRouterState s) =>
+              AppTransitions.forward(
+            key: s.pageKey,
+            child: const LegalDocumentPage(document: LegalDocuments.privacy),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.terms,
+          parentNavigatorKey: _rootKey,
+          pageBuilder: (BuildContext c, GoRouterState s) =>
+              AppTransitions.forward(
+            key: s.pageKey,
+            child: const LegalDocumentPage(document: LegalDocuments.terms),
+          ),
+        ),
+        GoRoute(
           path: AppRoutes.speciesPattern,
           parentNavigatorKey: _rootKey,
           pageBuilder: (BuildContext c, GoRouterState s) {
@@ -270,6 +290,8 @@ abstract final class AppRouter {
     if (!onboarding.completed) {
       return location == AppRoutes.onboarding ? null : AppRoutes.onboarding;
     }
+
+    if (AppRoutes.openRoutes.contains(location)) return null;
 
     final bool isPublic = AppRoutes.publicRoutes.contains(location);
 

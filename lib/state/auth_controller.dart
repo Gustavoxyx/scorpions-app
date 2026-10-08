@@ -74,9 +74,15 @@ class AuthController extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
+    String? privacyVersion,
   }) {
     return _run(
-      () => _repository.signUp(name: name, email: email, password: password),
+      () => _repository.signUp(
+        name: name,
+        email: email,
+        password: password,
+        privacyVersion: privacyVersion,
+      ),
     );
   }
 

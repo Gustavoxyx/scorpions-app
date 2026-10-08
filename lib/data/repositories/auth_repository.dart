@@ -25,10 +25,15 @@ abstract interface class AuthRepository {
 
   Future<AppUser> signIn({required String email, required String password});
 
+  /// [privacyVersion] é a versão do aviso de privacidade que a pessoa aceitou
+  /// na tela de cadastro. Vem de quem coletou o aceite, e não é preenchido
+  /// aqui dentro: um repositório que registrasse aceite por conta própria
+  /// gravaria consentimento que ninguém deu.
   Future<AppUser> signUp({
     required String name,
     required String email,
     required String password,
+    String? privacyVersion,
   });
 
   Future<void> sendPasswordReset(String email);
