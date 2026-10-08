@@ -65,6 +65,13 @@ class Settings:
     # fora justamente as contas que administram o sistema.
     require_mfa_for_staff: bool = False
 
+    # Limitar chamadas por endereço de origem, antes da autenticação. Só faz
+    # sentido quando o serviço enxerga o endereço REAL de cada cliente. Atrás
+    # do proxy de uma hospedagem, sem configurar o servidor para confiar nele,
+    # todos os clientes chegam com o endereço do proxy — e uma pessoa em laço
+    # esgotaria a janela de todos. Por isso nasce desligado.
+    rate_limit_by_ip: bool = False
+
     @property
     def is_configured(self) -> bool:
         return bool(self.project_id and self.service_account)
@@ -140,4 +147,5 @@ def get_settings() -> Settings:
         ),
         require_app_check=_flag("REQUIRE_APP_CHECK"),
         require_mfa_for_staff=_flag("REQUIRE_MFA_FOR_STAFF"),
+        rate_limit_by_ip=_flag("RATE_LIMIT_BY_IP"),
     )

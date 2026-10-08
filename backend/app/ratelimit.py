@@ -9,9 +9,10 @@ de token na rede. Sem um teto, um laço de pedidos gasta a cota do projeto.
 
 São duas janelas, com propósitos diferentes:
 
+- **por conta**, depois da autenticação: barra uma conta em laço. Sempre ligada.
 - **por endereço**, antes da autenticação: barra a enxurrada de tokens inválidos
-  antes de cada um custar uma verificação;
-- **por conta**, depois: barra uma conta legítima em laço.
+  antes de cada um custar uma verificação. **Desligada por padrão** — ver
+  abaixo.
 
 O QUE ISTO NÃO É
 ----------------
@@ -21,9 +22,18 @@ Para o porte atual — um processo num serviço gratuito — é o suficiente, e 
 exige infraestrutura nova. Quando houver mais de um, o contador vai para um
 armazenamento compartilhado, e esta interface não muda.
 
-Atrás de um proxy que não repassa o endereço de origem, a janela por endereço
-enxerga todos os clientes como um só. Por isso o limite dela é folgado: ela
-existe para conter abuso grosseiro, não para ser a única barreira.
+POR QUE A JANELA POR ENDEREÇO NASCE DESLIGADA
+---------------------------------------------
+Atrás do proxy de uma hospedagem, o serviço enxerga todos os clientes com o
+endereço do proxy. Uma janela por endereço, ali, é uma janela única para todo
+mundo: uma pessoa em laço a esgota e todos os outros passam a receber 429. A
+proteção viraria o ataque.
+
+Ela só deve ser ligada (`RATE_LIMIT_BY_IP=1`) quando o servidor estiver
+configurado para confiar no proxy e ler o endereço de origem — no uvicorn,
+`--proxy-headers` com `--forwarded-allow-ips` restrito ao proxy da hospedagem.
+Confiar no cabeçalho de origem sem essa restrição seria pior: qualquer cliente
+escolheria o próprio endereço.
 """
 
 from __future__ import annotations
@@ -36,6 +46,7 @@ from collections.abc import Callable
 from fastapi import Depends, HTTPException, Request, status
 
 from .auth import Caller, current_caller
+from .config import Settings, get_settings
 
 
 class SlidingWindow:
@@ -115,8 +126,12 @@ def _recusar_se(espera: float | None) -> None:
 _POR_ENDERECO = _janela(120, 60)
 
 
-def throttle_ip(request: Request) -> None:
-    """Janela por endereço. Roda antes da autenticação."""
+def throttle_ip(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> None:
+    """Janela por endereço. Roda antes da autenticação, quando ligada."""
+    if not settings.rate_limit_by_ip:
+        return
     endereco = request.client.host if request.client else "desconhecido"
     _recusar_se(_POR_ENDERECO.hit(endereco))
 

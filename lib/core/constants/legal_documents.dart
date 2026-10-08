@@ -66,8 +66,8 @@ abstract final class LegalDocuments {
             'você envia para identificar. Medidas tiradas de cada foto no '
             'próprio aparelho — nitidez, luz e resolução —, a data do envio e '
             'a contagem de quantas identificações você fez no dia.\n\n'
-            'A senha fica com o serviço de autenticação. O aplicativo não a '
-            'guarda nem a lê.',
+            'A senha é entregue ao serviço de autenticação e fica com ele. '
+            'O aplicativo não a guarda.',
       ),
       LegalSection(
         'O que não coletamos',

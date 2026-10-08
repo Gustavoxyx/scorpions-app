@@ -153,16 +153,28 @@ def test_o_limite_e_por_conta(cliente, monkeypatch) -> None:
     assert cliente.get("/v1/me/quota").status_code == 200
 
 
-def test_enxurrada_sem_token_e_barrada_antes_da_autenticacao(cliente) -> None:
-    """A janela por endereço roda antes de o token ser verificado.
+def test_janela_por_endereco_barra_antes_da_autenticacao_quando_ligada(
+    cliente,
+) -> None:
+    """Ligada, ela roda antes de o token ser verificado."""
+    _com_settings(rate_limit_by_ip=True)
 
-    É o que impede que cada token inválido de uma enxurrada custe uma
-    verificação na rede.
-    """
     respostas = [cliente.get("/v1/me/quota").status_code for _ in range(121)]
 
     assert respostas[:120] == [401] * 120
     assert respostas[120] == 429
+
+
+def test_janela_por_endereco_nasce_desligada(cliente) -> None:
+    """Atrás de um proxy todos os clientes têm o mesmo endereço.
+
+    Com a janela ligada ali, uma pessoa em laço esgotaria o limite de todo
+    mundo: a proteção viraria negação de serviço. O padrão precisa ser o que
+    não derruba ninguém.
+    """
+    respostas = {cliente.get("/v1/me/quota").status_code for _ in range(200)}
+
+    assert respostas == {401}
 
 
 def test_health_fica_fora_do_limite(cliente) -> None:
