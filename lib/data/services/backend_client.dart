@@ -81,11 +81,6 @@ typedef IdTokenProvider = Future<String?> Function({bool forceRefresh});
 class HttpBackendClient implements BackendClient {
   // `this._idToken` num parâmetro nomeado expõe o nome público `idToken:` —
   // nesta versão do Dart o sublinhado fica só no campo.
-  //
-  // Vale registrar porque a primeira versão deste construtor suprimia o lint
-  // `prefer_initializing_formals` com um comentário dizendo o contrário: que
-  // segui-lo poria um sublinhado na assinatura de quem chama. Era falso — o
-  // resto do projeto já usa esta forma —, e o lint estava certo.
   HttpBackendClient({
     required this._idToken,
     this._appCheckToken,

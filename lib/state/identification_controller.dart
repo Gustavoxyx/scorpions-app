@@ -28,11 +28,6 @@ class IdentificationIdle extends IdentificationState {
   const IdentificationIdle();
 }
 
-/// Aguardando a escolha de uma imagem (câmera ou galeria).
-class IdentificationSelectingImage extends IdentificationState {
-  const IdentificationSelectingImage();
-}
-
 /// A foto está sendo lida, validada e medida — antes de qualquer envio.
 class IdentificationInspecting extends IdentificationState {
   const IdentificationInspecting(this.image);
@@ -467,13 +462,9 @@ class IdentificationController extends ChangeNotifier {
     }
 
     final IdentificationResult combinado = desfecho.copyWith(
-      // O MESMO id do registro que o pipeline criou.
-      //
-      // Isto era um defeito. O motor simulado devolve um resultado com id
-      // próprio (`mock-…`), e gravá-lo assim deixava DOIS registros no
-      // histórico a cada identificação: o desfecho, e o registro original
-      // preso em "processando" para sempre. O comentário acima deste método
-      // sempre disse "mantendo id" — o código é que não mantinha.
+      // O MESMO id do registro que o pipeline criou. O motor simulado devolve
+      // um resultado com id próprio; gravá-lo assim deixaria dois registros no
+      // histórico, um deles preso em "processando".
       id: registro.id,
       userId: registro.userId,
       imageUrl: registro.imageUrl,

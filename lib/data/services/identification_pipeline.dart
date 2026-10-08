@@ -350,11 +350,6 @@ class IdentificationPipeline {
   /// documento já teria sido gravado e ficaria preso em `processing` para
   /// sempre, invisível e órfão.
   ///
-  /// Esta tolerância existia na Fase 3, dentro do repositório. Ao mover o envio
-  /// para o pipeline ela ficou para trás uma vez; ao passar para duas vistas
-  /// ela veio para cá, para que as duas a tenham igual e uma falha numa não
-  /// alcance a outra.
-  ///
   /// Perder a foto é ruim. Perder a foto **e** o registro é pior: a
   /// identificação sobrevive marcada, e a tela tem como explicar por quê.
   Future<_ResultadoDeEnvio> _enviarVista(

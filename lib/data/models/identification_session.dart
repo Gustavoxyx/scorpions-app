@@ -56,13 +56,6 @@ class SessionView {
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
     );
   }
-
-  Map<String, Object?> toMap() => <String, Object?>{
-        'instruction': instruction.toMap(),
-        'quality': quality?.toMap(),
-        'imageUrl': imageUrl,
-        'thumbnailUrl': thumbnailUrl,
-      };
 }
 
 /// Situação da sessão. Espelha o `status` gravado no Firestore.
@@ -85,13 +78,6 @@ enum SessionStatus {
   const SessionStatus(this.id);
 
   final String id;
-
-  static SessionStatus fromId(String? raw) {
-    for (final SessionStatus s in SessionStatus.values) {
-      if (s.id == raw) return s;
-    }
-    return SessionStatus.error;
-  }
 }
 
 /// As duas fotografias de uma mesma identificação (§4).
@@ -183,19 +169,4 @@ class IdentificationSession {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
-
-  /// O que o **cliente** pode gravar.
-  ///
-  /// Repare no que não está aqui: `species`, `confidence`, `modelVersion` e
-  /// qualquer resultado de análise. Esses campos pertencem ao servidor, e a
-  /// Security Rules recusa a escrita deles vinda daqui (auditoria HIGH-1).
-  /// Deixá-los de fora do mapa não é a proteção — a regra é — mas evita que
-  /// alguém os adicione aqui por distração e descubra o problema em produção.
-  Map<String, Object?> toClientMap() => <String, Object?>{
-        'userId': userId,
-        'status': status.id,
-        'views': views.map((SessionView v) => v.toMap()).toList(growable: false),
-        'viewCount': views.length,
-        'combinedQuality': combinedQuality?.name,
-      };
 }

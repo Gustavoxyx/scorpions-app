@@ -6,7 +6,6 @@ import 'app_colors.dart';
 import 'app_motion.dart';
 import 'app_radii.dart';
 import 'app_sizing.dart';
-import 'app_spacing.dart';
 import 'app_typography.dart';
 
 /// Monta os [ThemeData] a partir dos tokens.
@@ -175,4 +174,3 @@ extension AppThemeContext on BuildContext {
 
 /// Constantes de animação reexportadas para conveniência dos widgets.
 typedef Motion = AppMotion;
-typedef Space = AppSpacing;

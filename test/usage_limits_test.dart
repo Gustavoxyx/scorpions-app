@@ -21,11 +21,10 @@ void main() {
       expect(UsageDay.of(local), UsageDay.of(utc));
     });
 
-    test('bate com a conta que as regras fazem', () {
-      // utcDay() nas regras: floor(millis / 86400000).
-      final DateTime instante = DateTime.utc(2026, 10, 7, 15, 30);
-      final int esperado = instante.millisecondsSinceEpoch ~/ 86400000;
-      expect(UsageDay.of(instante), '$esperado');
+    test('um dia conhecido, conferido à mão', () {
+      // 2026-10-07 é o dia 20733 desde 1970-01-01: 56 anos, 14 deles
+      // bissextos, mais os 279 dias de janeiro a 6 de outubro.
+      expect(UsageDay.of(DateTime.utc(2026, 10, 7, 15, 30)), '20733');
     });
   });
 

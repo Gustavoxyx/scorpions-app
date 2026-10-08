@@ -8,7 +8,7 @@ Não é esquecimento: é o achado HIGH-1 da auditoria aplicado na forma dos
 dados. O que o cliente não consegue nomear, ele não consegue forjar. O dono
 sai do token verificado; o resultado sai do modelo, no servidor.
 
-É a mesma ideia de `IdentificationSession.toClientMap()` no Flutter — os dois
+É a mesma ideia de `IdentificationResult.toClientCreateMap()` no Flutter — os dois
 lados deixam os campos de resultado de fora, e a Security Rules recusa quem
 tentar escrevê-los mesmo assim. Três camadas dizendo a mesma coisa.
 """
