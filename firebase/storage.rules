@@ -67,7 +67,11 @@ service firebase.storage {
 
       allow read: if isOwner(userId);
 
+      // Enviar exige e-mail confirmado, como criar a identificação no
+      // Firestore: as duas regras precisam concordar, senão uma conta sem
+      // confirmação guardaria arquivos para um registro que não consegue criar.
       allow create, update: if isOwner(userId)
+        && request.auth.token.email_verified == true
         && isWithinSizeLimit()
         && isAllowedImage()
         && isAllowedFileName(fileName);

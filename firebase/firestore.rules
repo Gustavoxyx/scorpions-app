@@ -4,13 +4,17 @@ rules_version = '2';
 // SCORPIONS — Regras de segurança do Cloud Firestore
 // =============================================================================
 //
-// PRINCÍPIO (brief §7, §38): o cliente Flutter não é autoridade sobre nada.
-// A interface pode esconder um botão; quem decide se a escrita acontece é este
-// arquivo, avaliado no servidor. Toda regra abaixo parte do princípio de que o
-// aplicativo pode ter sido adulterado.
+// PRINCÍPIO: o cliente Flutter não é autoridade sobre nada. A interface pode
+// esconder um botão; quem decide se a escrita acontece é este arquivo, avaliado
+// no servidor. Toda regra abaixo parte do princípio de que o aplicativo pode
+// ter sido adulterado.
 //
 // LEITURA DESTE ARQUIVO: nada é permitido por padrão. Cada `allow` é uma
 // concessão explícita e mínima. A última regra nega tudo que não foi previsto.
+//
+// LISTA BRANCA, NÃO LISTA NEGRA: onde o cliente escreve, a regra enumera os
+// campos que ele PODE gravar. Enumerar os proibidos deixaria passar todo campo
+// que ninguém lembrou de proibir.
 // =============================================================================
 
 service cloud.firestore {
@@ -56,28 +60,74 @@ service cloud.firestore {
       return request.resource.data[field] == request.time;
     }
 
+    // O endereço de e-mail foi confirmado por quem o cadastrou.
+    //
+    // Exigido para CRIAR conteúdo, não para ler nem apagar: uma conta sem
+    // confirmação continua vendo e removendo o que já tem. A claim ausente
+    // lança erro de avaliação, e erro de avaliação é recusa.
+    function hasVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Dia corrente em UTC, em dias inteiros desde a época.
+    function utcDay() {
+      return int(math.floor(request.time.toMillis() / 86400000.0));
+    }
+
+    // O dia informado pelo cliente é o do servidor, ou um vizinho imediato.
+    //
+    // A tolerância existe porque quem calcula o dia é o relógio do aparelho, e
+    // perto da virada ele pode estar adiantado ou atrasado. Ela não afrouxa o
+    // limite: cada dia é um contador próprio, que só enche uma vez. Usar hoje o
+    // contador de amanhã gasta a cota de amanhã.
+    function isCurrentUsageDay(dia) {
+      return dia is string
+        && (dia == string(utcDay())
+            || dia == string(utcDay() - 1)
+            || dia == string(utcDay() + 1));
+    }
+
+    // Espelhado em `ImageLimits.maxIdentificationsPerDay` no aplicativo e em
+    // `max_analyses_per_day` no backend. Um teste confere que os três batem.
+    function dailyCreationLimit() {
+      return 60;
+    }
+
     // -------------------------------------------------------------------------
-    // users/{userId}  (brief §9)
+    // users/{userId}
     // -------------------------------------------------------------------------
     // Documento de perfil. A senha NÃO mora aqui — pertence ao Authentication.
     //
-    // Campos: uid, name, email, role, createdAt, updatedAt.
-    //
-    // Contadores (identificationCount, etc.) foram deliberadamente deixados de
-    // fora: se o cliente pudesse escrevê-los, poderia inflar as próprias
-    // estatísticas. O perfil deriva os números da coleção de identificações.
-    // Quando a escala exigir denormalização, ela virá de uma Cloud Function.
+    // Contadores (identificationCount, etc.) ficam de fora de propósito: se o
+    // cliente pudesse escrevê-los, poderia inflar as próprias estatísticas.
     match /users/{userId} {
+
+      // Registro do aceite do aviso de privacidade.
+      //
+      // `privacyVersion` diz QUAL texto foi aceito; `consentAt` diz quando. Os
+      // dois andam juntos, e o momento é o do servidor — um carimbo vindo do
+      // aparelho poderia ser recuado para antes de uma mudança do texto.
+      function isValidConsent() {
+        let versao = request.resource.data.get('privacyVersion', null);
+        return versao == null
+          ? !('consentAt' in request.resource.data)
+          : (versao is string
+             && versao.size() > 0
+             && versao.size() <= 32
+             && request.resource.data.get('consentAt', null) is timestamp);
+      }
 
       function isValidUserShape() {
         return request.resource.data.keys().hasOnly(
-                 ['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
+                 ['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt',
+                  'privacyVersion', 'consentAt'])
           && request.resource.data.uid is string
           && request.resource.data.name is string
           && request.resource.data.name.size() >= 2
           && request.resource.data.name.size() <= 80
           && request.resource.data.email is string
-          && request.resource.data.email.size() <= 320;
+          && request.resource.data.email.size() <= 320
+          && isValidConsent();
       }
 
       // Um usuário lê o próprio perfil. Admin lê qualquer um.
@@ -91,99 +141,146 @@ service cloud.firestore {
       //
       // ESCALAÇÃO DE PRIVILÉGIO: `role` é fixado em 'user' pela regra. Mesmo
       // que um cliente adulterado envie `role: 'admin'`, a escrita é recusada.
-      // Promover alguém a admin é operação de console/backend, nunca do app.
+      // Promover alguém é operação de console ou de backend, nunca do app.
       allow create: if isOwner(userId)
         && isValidUserShape()
         && request.resource.data.uid == userId
         && request.resource.data.role == 'user'
         && request.resource.data.email == request.auth.token.email
         && isValidTimestamp('createdAt')
-        && isValidTimestamp('updatedAt');
+        && isValidTimestamp('updatedAt')
+        && (!('consentAt' in request.resource.data)
+            || isValidTimestamp('consentAt'));
 
-      // O usuário só altera o próprio nome. uid, email, role e createdAt são
-      // imutáveis a partir do cliente.
+      // O usuário altera o próprio nome e renova o aceite do aviso de
+      // privacidade. uid, email, role e createdAt são imutáveis pelo cliente.
       allow update: if isOwner(userId)
         && isValidUserShape()
-        && changedFields().hasOnly(['name', 'updatedAt'])
-        && isValidTimestamp('updatedAt');
+        && changedFields().hasOnly(
+             ['name', 'updatedAt', 'privacyVersion', 'consentAt'])
+        && isValidTimestamp('updatedAt')
+        && (!changedFields().hasAny(['privacyVersion', 'consentAt'])
+            || isValidTimestamp('consentAt'));
 
-      // Exclusão de conta (§37) envolve Authentication, Storage e as
-      // identificações — precisa de privilégio administrativo e roda em
-      // backend. Nunca a partir do aplicativo.
-      //
-      // Existe agora: `DELETE /v1/me` no backend de inferência, com
-      // reautenticação exigida e cascata na ordem segura. Fecha o HIGH-2 da
-      // auditoria e o Art. 18, VI da LGPD. A regra continua `false` porque o
-      // caminho é o backend, com o Admin SDK — não o cliente.
+      // Exclusão de conta envolve Authentication, Storage e as identificações:
+      // precisa de privilégio administrativo e roda no backend (`DELETE
+      // /v1/me`), com reautenticação e cascata na ordem segura.
       allow delete: if false;
     }
 
     // -------------------------------------------------------------------------
-    // users/{userId}/quotas/{dia}  (MEDIUM-4 da auditoria)
+    // users/{userId}/quotas/{dia}
     // -------------------------------------------------------------------------
-    // O contador de uso diário, que o backend incrementa numa transação antes
-    // de cada análise.
+    // O contador de ANÁLISES, que o backend incrementa numa transação antes de
+    // cada pedido de inferência.
     //
-    // POR QUE A REGRA PRECISA EXISTIR, SE A NEGAÇÃO FINAL JÁ COBRE
-    // As regras do Firestore **não** descem para subcoleções: `users/{userId}`
-    // não alcança `users/{userId}/quotas/{dia}`, e o `match /{document=**}` do
-    // fim já negaria tudo aqui. Mas depender disso é frágil — basta alguém
-    // declarar uma regra recursiva em `users` e o contador fica escrevível.
-    //
-    // E escrevível é o que não pode ser. Se o cliente pudesse gravar aqui, ele
-    // zeraria o próprio contador e o limite de uso deixaria de existir — o
-    // MEDIUM-4 voltaria por uma porta diferente da que foi fechada.
-    //
-    // Então: leitura para o dono (a tela pode mostrar quanto resta, e
-    // `GET /v1/me/quota` existe para o caso autoritativo), escrita para
-    // **ninguém**.
+    // A regra existe mesmo com a negação final cobrindo o caminho: as regras do
+    // Firestore não descem para subcoleções, e depender disso é frágil — basta
+    // alguém declarar uma regra recursiva em `users` e o contador fica
+    // escrevível. Se o cliente pudesse gravar aqui, zeraria o próprio limite.
     match /users/{userId}/quotas/{dia} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if false;
     }
 
     // -------------------------------------------------------------------------
-    // auditLogs/{logId}  (LOW-4 da auditoria, FASE 24 do briefing)
+    // users/{userId}/usage/{dia}
+    // -------------------------------------------------------------------------
+    // Quantas identificações a pessoa CRIOU no dia. Diferente de `quotas`, que
+    // conta análises e é do backend: este contador é escrito pelo cliente, no
+    // mesmo lote da criação, e quem garante que ele só anda para a frente é
+    // esta regra.
+    //
+    // Existe porque a criação acontece direto no Firestore, sem passar pelo
+    // backend. Sem ele, uma conta gravava documentos sem limite.
+    //
+    // `lastId` amarra cada incremento a UMA identificação. Sem essa amarra, um
+    // lote com um incremento e quinhentas identificações passaria: todas veriam
+    // o contador um acima do anterior.
+    match /users/{userId}/usage/{dia} {
+
+      function isValidUsageShape() {
+        return request.resource.data.keys().hasOnly(
+                 ['count', 'lastId', 'updatedAt'])
+          && request.resource.data.keys().hasAll(
+                 ['count', 'lastId', 'updatedAt'])
+          && request.resource.data.count is int
+          && request.resource.data.lastId is string
+          && request.resource.data.lastId.size() > 0
+          && request.resource.data.lastId.size() <= 64
+          && isValidTimestamp('updatedAt');
+      }
+
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if isOwner(userId)
+        && hasVerifiedEmail()
+        && isCurrentUsageDay(dia)
+        && isValidUsageShape()
+        && request.resource.data.count == 1;
+
+      allow update: if isOwner(userId)
+        && hasVerifiedEmail()
+        && isCurrentUsageDay(dia)
+        && isValidUsageShape()
+        && request.resource.data.count == resource.data.count + 1
+        && request.resource.data.count <= dailyCreationLimit();
+
+      // Apagar o contador seria zerá-lo.
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // auditLogs/{logId}
     // -------------------------------------------------------------------------
     // Registro de quem fez o quê nas operações críticas.
     //
-    // FECHADO PARA TODOS, INCLUSIVE ADMIN — e isso é deliberado.
+    // FECHADO PARA TODOS, INCLUSIVE ADMIN — e isso é deliberado. O pior cenário
+    // por credencial é uma conta administrativa comprometida, e o audit log é
+    // justamente o que registraria essa conta agindo. Deixá-lo alcançável pelo
+    // papel que ele audita entregaria ao atacante a capacidade de apagar o
+    // próprio rastro.
     //
-    // O modelo de ameaças marca em T-4 que o pior cenário por credencial é uma
-    // conta administrativa comprometida. O audit log é justamente o que
-    // registraria essa conta agindo. Deixá-lo alcançável pelo papel que ele
-    // audita entregaria ao atacante a capacidade de apagar o próprio rastro — e
-    // o plano de resposta a incidentes tem uma regra que não se quebra: não
-    // apagar evidência.
-    //
-    // Quem escreve é o backend, com o Admin SDK, que ignora estas regras. Quem
-    // lê, numa investigação, é o console do Firebase — onde o acesso é do dono
-    // do projeto e fica registrado pelo Google.
-    //
-    // Se um dia houver um painel de auditoria no aplicativo, ele lê pelo
-    // backend, com papel conferido no servidor. Não daqui.
+    // Quem escreve é o backend, com o Admin SDK. Quem lê, numa investigação, é
+    // o console do Firebase. Um painel de auditoria no aplicativo, se existir,
+    // lê pelo backend, com papel conferido no servidor.
     match /auditLogs/{logId} {
       allow read, write: if false;
     }
 
     // -------------------------------------------------------------------------
-    // species/{speciesId}  (brief §10)
+    // species/{speciesId}
     // -------------------------------------------------------------------------
     // DECISÃO ARQUITETURAL: o catálogo é de LEITURA PÚBLICA.
     //
     // É conteúdo científico de referência, sem dado pessoal, e o produto quer
-    // que ele seja consultável — inclusive antes do cadastro, quando quem
-    // acabou de encontrar um escorpião precisa de informação imediatamente.
-    // Escrita é exclusiva de administradores.
+    // que ele seja consultável inclusive antes do cadastro, quando quem acabou
+    // de encontrar um escorpião precisa de informação imediatamente. Escrita é
+    // exclusiva de administradores.
     match /species/{speciesId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
     // -------------------------------------------------------------------------
-    // identifications/{identificationId}  (brief §11, §28)
+    // identifications/{identificationId}
     // -------------------------------------------------------------------------
     // Registros do usuário. Cada documento pertence a exatamente um `userId`.
+    //
+    // QUEM ESCREVE O QUÊ
+    //
+    // O cliente grava o que ele produziu: a fotografia, o que mediu dela e o
+    // que foi pedido na captura. Ver `clientCreateFields()`.
+    //
+    // O servidor grava o que é CONCLUSÃO DE ANÁLISE, com o Admin SDK, que
+    // ignora estas regras: speciesId, scientificName, confidence, species,
+    // alternatives, rejectionReason, modelVersion, reviewedBy, reviewedAt,
+    // humanSpeciesId, isMock, fusion — e `status`, depois da criação.
+    //
+    // Um valor de confiança forjado pelo cliente contaminaria as métricas,
+    // entraria na fila de revisão humana como se fosse saída do modelo e
+    // alimentaria o retreinamento com rótulo falso. Por isso nenhum desses
+    // campos aparece nas listas abaixo.
     match /identifications/{identificationId} {
 
       function ownsExisting() {
@@ -194,59 +291,56 @@ service cloud.firestore {
         return isSignedIn() && request.resource.data.userId == uid();
       }
 
-      function isValidStatus(value) {
-        return value in ['processing', 'identified', 'low_confidence',
-                         'rejected', 'error'];
+      // Tudo que o cliente pode gravar ao criar. Nada além disto.
+      function clientCreateFields() {
+        return ['userId', 'imageUrl', 'thumbnailUrl', 'status',
+                'pipelineVersion', 'imageQuality', 'errorCode', 'createdAt',
+                'viewCount', 'secondaryView', 'quotaDay'];
       }
 
-      // Campos do pipeline de imagem (Fase 4, §10).
-      //
-      // São conferidos aqui porque o cliente os escreve, e um cliente adulterado
-      // escreveria qualquer coisa. `imageQuality` é o caso mais delicado: é um
-      // mapa aberto, e sem limite de tamanho viraria um depósito de dados
-      // arbitrários dentro de um documento que o dono pode escrever à vontade.
-      //
-      // ATENÇÃO ao uso de `get(campo, padrão)`. Escrever
-      // `request.resource.data.thumbnailUrl == null` **não** funciona: acessar
-      // uma propriedade que não existe no mapa lança erro de avaliação em vez
-      // de devolver nulo, e a escrita inteira é recusada. Foi assim que a
-      // primeira versão desta função quebrou a criação de identificações — o
-      // emulador apontou "Property thumbnailUrl is undefined on object".
-      //
-      // Campos opcionais precisam ser lidos com valor padrão, sempre.
-      function isValidPipelineFields() {
-        let d = request.resource.data;
-        let thumb = d.get('thumbnailUrl', null);
-        let versao = d.get('pipelineVersion', null);
-        let erro = d.get('errorCode', null);
-        let qualidade = d.get('imageQuality', null);
-        let vistas = d.get('viewCount', null);
-
-        return (thumb == null || (thumb is string && thumb.size() <= 512))
-          && (versao == null || (versao is string && versao.size() <= 64))
-          && (erro == null || (erro is string && erro.size() <= 64))
-          && (qualidade == null
-              || (qualidade is map && qualidade.keys().size() <= 12))
-          // Uma ou duas fotografias. O backend recusa a terceira, e a regra do
-          // Storage não aceita nome de arquivo para ela.
-          && (vistas == null || vistas == 1 || vistas == 2)
-          && isValidSecondaryView();
+      // O que o cliente pode MUDAR depois: os caminhos das imagens, que só
+      // existem quando o envio termina, e a marca de falha de envio.
+      function clientUpdateFields() {
+        return ['imageUrl', 'thumbnailUrl', 'errorCode', 'secondaryView'];
       }
 
-      // A segunda fotografia da identificação (Fase 5).
+      // Texto opcional de tamanho limitado.
       //
-      // É dado do CLIENTE — ele capturou, mediu e enviou — e por isso é
-      // validado como os outros campos do pipeline: forma fechada e tamanhos
-      // limitados.
-      //
-      // `hasOnly` é o que importa aqui. Sem ele o mapa seria aberto, e um
-      // cliente adulterado guardaria ali `confidence: 0.99` ou qualquer outra
-      // conclusão de análise, um nível abaixo de onde `serverOwnedFields()`
-      // olha. O que as duas fotos disseram juntas vai em `fusion`, que só o
-      // servidor escreve.
-      function isValidSecondaryView() {
-        let v = request.resource.data.get('secondaryView', null);
+      // Campos opcionais são lidos com `get(campo, null)`. Acessar direto uma
+      // propriedade que não existe lança erro de avaliação em vez de devolver
+      // nulo, e a escrita inteira é recusada.
+      function isOptionalText(value, max) {
+        return value == null || (value is string && value.size() <= max);
+      }
 
+      // As medidas de qualidade que o aparelho tirou da fotografia.
+      //
+      // Forma fechada: sem isto o mapa viraria um depósito de dados arbitrários
+      // dentro de um documento que o dono escreve à vontade.
+      function isValidQuality(q) {
+        return q == null || (
+          q is map
+          && q.keys().hasOnly(['quality', 'score', 'brightness', 'contrast',
+                               'sharpness', 'width', 'height', 'warnings'])
+          && q.get('quality', '') is string
+          && q.get('quality', '').size() <= 16
+          && q.get('score', 0) is number
+          && q.get('brightness', 0) is number
+          && q.get('contrast', 0) is number
+          && q.get('sharpness', 0) is number
+          && q.get('width', 0) is int
+          && q.get('height', 0) is int
+          && q.get('warnings', []) is list
+          && q.get('warnings', []).hasOnly(
+               ['tooDark', 'tooBright', 'lowContrast', 'blurry', 'softFocus',
+                'lowResolution'])
+        );
+      }
+
+      // A segunda fotografia da identificação. É dado do cliente — ele
+      // capturou, mediu e enviou. O que as duas fotos disseram JUNTAS vai em
+      // `fusion`, que só o servidor escreve.
+      function isValidSecondaryView(v) {
         return v == null || (
           v is map
           && v.keys().hasOnly(['captureType', 'instructionId', 'imageUrl',
@@ -255,111 +349,100 @@ service cloud.firestore {
           && v.get('captureType', '').size() <= 32
           && v.get('instructionId', '') is string
           && v.get('instructionId', '').size() <= 64
-          && (v.get('imageUrl', null) == null
-              || (v.get('imageUrl', null) is string
-                  && v.get('imageUrl', null).size() <= 512))
-          && (v.get('thumbnailUrl', null) == null
-              || (v.get('thumbnailUrl', null) is string
-                  && v.get('thumbnailUrl', null).size() <= 512))
-          && (v.get('imageQuality', null) == null
-              || (v.get('imageQuality', null) is map
-                  && v.get('imageQuality', null).keys().size() <= 12))
+          && isOptionalText(v.get('imageUrl', null), 512)
+          && isOptionalText(v.get('thumbnailUrl', null), 512)
+          && isValidQuality(v.get('imageQuality', null))
         );
       }
 
-      // Campos que SÓ O SERVIDOR escreve (auditoria HIGH-1).
-      //
-      // Até aqui, a regra validava o FORMATO de `confidence` — entre 0 e 1 —
-      // e deixava passar qualquer valor nesse intervalo. Formato não é
-      // origem: um `0.99` forjado por um cliente adulterado passava
-      // exatamente como um produzido por um modelo.
-      //
-      // Sem IA, o estrago era pequeno: o usuário poluía o próprio histórico.
-      // Com IA, um registro forjado contamina as métricas de acurácia, entra
-      // na fila de revisão humana como se fosse saída do modelo, alimenta o
-      // dataset de retreinamento com rótulo falso, e destrói a
-      // auditabilidade — não haveria como distinguir o que o modelo disse do
-      // que o usuário digitou.
-      //
-      // O backend de inferência escreve estes campos com o Admin SDK, que
-      // ignora as regras por natureza. Então proibi-los aqui não atrapalha o
-      // servidor e fecha o cliente.
-      function serverOwnedFields() {
-        // `fusion` é o que a análise concluiu sobre o CONJUNTO das vistas:
-        // se concordaram, quanto, e qual foi a decisão. Forjar "as duas fotos
-        // concordaram" é o mesmo ataque de forjar `confidence: 0.99`, por
-        // outro campo.
-        return ['speciesId', 'scientificName', 'confidence', 'species',
-                'alternatives', 'rejectionReason', 'modelVersion',
-                'reviewedBy', 'reviewedAt', 'humanSpeciesId', 'isMock',
-                'fusion'];
+      function isValidClientFields() {
+        let d = request.resource.data;
+        let vistas = d.get('viewCount', null);
+
+        return isOptionalText(d.get('imageUrl', null), 512)
+          && isOptionalText(d.get('thumbnailUrl', null), 512)
+          && isOptionalText(d.get('pipelineVersion', null), 64)
+          && isOptionalText(d.get('errorCode', null), 64)
+          && isValidQuality(d.get('imageQuality', null))
+          // Uma ou duas fotografias. O backend recusa a terceira, e a regra do
+          // Storage não aceita nome de arquivo para ela.
+          && (vistas == null || vistas == 1 || vistas == 2)
+          && isValidSecondaryView(d.get('secondaryView', null));
       }
 
-      // A criação nasce sempre em `processing`.
+      // O contador do dia subiu exatamente um, e subiu POR ESTA identificação.
       //
-      // Os outros estados são CONCLUSÕES de uma análise, e a análise não
-      // acontece no aplicativo. Permitir que o cliente criasse um documento
-      // já `identified` seria o mesmo furo por outro caminho.
-      function isValidIdentification() {
-        return request.resource.data.userId is string
+      // `getAfter` enxerga o estado depois do lote inteiro. Comparado com o
+      // estado de antes, prova que o incremento veio junto — e `lastId` prova
+      // que veio para este documento, e não para outro do mesmo lote.
+      function usageWasCharged(dia) {
+        let caminho =
+          /databases/$(database)/documents/users/$(uid())/usage/$(dia);
+        return getAfter(caminho).data.lastId == identificationId
+          && getAfter(caminho).data.count ==
+               (exists(caminho) ? get(caminho).data.count + 1 : 1);
+      }
+
+      // A criação nasce sempre em `processing`. Os outros estados são
+      // conclusões de uma análise, e a análise não acontece no aplicativo.
+      function isValidCreation() {
+        let dia = request.resource.data.get('quotaDay', null);
+
+        return request.resource.data.keys().hasOnly(clientCreateFields())
+          && request.resource.data.userId is string
           && request.resource.data.status == 'processing'
-          && !request.resource.data.keys().hasAny(serverOwnedFields())
-          && isValidPipelineFields()
-          && isValidTimestamp('createdAt');
+          && isValidTimestamp('createdAt')
+          && isValidClientFields()
+          && isCurrentUsageDay(dia)
+          && usageWasCharged(dia);
       }
 
-      // Leitura e listagem exigem que o documento seja do solicitante.
-      //
-      // Isto também resolve o §28 sem código: uma consulta sem
-      // `where('userId', '==', uid)` é recusada pelo servidor, porque o
-      // Firestore só autoriza uma listagem quando consegue provar que TODO
-      // resultado possível satisfaz a regra. Não há como buscar o histórico
-      // alheio, nem por engano.
+      // Leitura e listagem exigem que o documento seja do solicitante. Uma
+      // consulta sem `where('userId', '==', uid)` é recusada: o Firestore só
+      // autoriza uma listagem quando consegue provar que TODO resultado
+      // possível satisfaz a regra.
       allow read: if ownsExisting() || isAdmin();
 
-      allow create: if ownsIncoming() && isValidIdentification();
+      allow create: if ownsIncoming()
+        && hasVerifiedEmail()
+        && isValidCreation();
 
-      // Atualização mantém a posse e não permite transferir o registro para
-      // outro usuário.
-      // A atualização é o segundo passo normal do pipeline: o documento nasce
-      // sem imagem e recebe os caminhos quando o envio termina.
-      // O cliente atualiza só o que ele produziu: os caminhos das imagens e a
-      // marca de falha de envio. `changedFields()` é o que torna isso
-      // verificável — ele lista o que a escrita está MUDANDO, então um
-      // documento já analisado pelo servidor não pode ter o resultado
-      // reescrito por quem o criou.
+      // O segundo passo normal do pipeline: o documento nasce sem imagem e
+      // recebe os caminhos quando o envio termina.
+      //
+      // `changedFields().hasOnly(...)` é o que fecha o resto. Dono, data de
+      // criação, estado, dia da cota e todo campo do servidor ficam imutáveis
+      // para o cliente sem precisar ser citados um a um — inclusive os que
+      // ainda não existem.
       allow update: if ownsExisting()
         && ownsIncoming()
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.createdAt == resource.data.createdAt
-        && !changedFields().hasAny(serverOwnedFields())
-        && isValidStatus(request.resource.data.status)
-        && isValidPipelineFields();
+        && changedFields().hasOnly(clientUpdateFields())
+        && isValidClientFields();
 
-      // O usuário pode apagar o próprio registro (§36 — controle sobre os
-      // próprios dados). O arquivo no Storage é removido pelo aplicativo em
-      // seguida; a limpeza de órfãos fica para uma Function.
+      // O usuário pode apagar o próprio registro. O arquivo no Storage é
+      // removido pelo aplicativo em seguida.
       allow delete: if ownsExisting();
     }
 
     // -------------------------------------------------------------------------
-    // feedback/{feedbackId}  (Fase 8 — human-in-the-loop)
+    // feedback/{feedbackId}
     // -------------------------------------------------------------------------
-    // Criado agora apenas com a regra segura. Sem uso no aplicativo ainda.
+    // Fechada até a funcionalidade existir.
+    //
+    // Havia aqui uma regra de criação aberta — qualquer conta gravava um
+    // documento de forma livre — para uma tela que ainda não foi escrita. Regra
+    // sem uso é superfície sem benefício. Quando o retorno do usuário sobre o
+    // resultado for implementado, a regra nasce junto, com forma fechada e
+    // teste.
     match /feedback/{feedbackId} {
-      allow create: if isSignedIn()
-        && request.resource.data.userId == uid()
-        && isValidTimestamp('createdAt');
-      allow read: if (isSignedIn() && resource.data.userId == uid()) || isAdmin();
-      allow update, delete: if isAdmin();
+      allow read, write: if false;
     }
 
     // -------------------------------------------------------------------------
     // Negação final
     // -------------------------------------------------------------------------
     // Qualquer coleção não declarada acima é inacessível. Criar uma coleção
-    // nova exige escrever a regra dela — que é exatamente o comportamento
-    // desejado: nada nasce aberto por esquecimento.
+    // nova exige escrever a regra dela: nada nasce aberto por esquecimento.
     match /{document=**} {
       allow read, write: if false;
     }

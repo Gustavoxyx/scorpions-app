@@ -118,6 +118,7 @@ class AppDependencies {
         processing: const DefaultImageProcessingService(),
         uploader: uploader,
         connectivity: PlatformConnectivityService(),
+        requireVerifiedEmail: true,
       ),
       accountRepository: _resolveAccount(auth),
       mode: mode,

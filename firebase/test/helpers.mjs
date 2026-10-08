@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
+import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const firebaseDir = join(here, '..');
@@ -108,6 +109,37 @@ export async function seedContent(testEnv) {
 /** Contexto autenticado com o e-mail no token (as regras conferem `email`). */
 export function asUser(testEnv, uid, email) {
   return testEnv.authenticatedContext(uid, { email, email_verified: true });
+}
+
+/** Conta que existe mas nunca confirmou o e-mail. */
+export function asUnverifiedUser(testEnv, uid, email) {
+  return testEnv.authenticatedContext(uid, { email, email_verified: false });
+}
+
+/** Dia UTC como o aplicativo calcula: dias inteiros desde a época. */
+export function diaUtc(deslocamento = 0) {
+  return String(Math.floor(Date.now() / 86400000) + deslocamento);
+}
+
+/**
+ * Cria uma identificação do jeito que o aplicativo cria: num lote só, o
+ * registro e o incremento do contador do dia.
+ *
+ * Os testes de RECUSA também passam por aqui, de propósito. Uma recusa testada
+ * com `setDoc` puro passaria por falta do contador, e não pelo motivo que o
+ * teste diz estar conferindo.
+ */
+export async function criarIdentificacao(db, uid, id, dados, dia = diaUtc()) {
+  const uso = doc(db, `users/${uid}/usage/${dia}`);
+  const atual = await getDoc(uso);
+  const lote = writeBatch(db);
+  lote.set(doc(db, 'identifications', id), { ...dados, quotaDay: dia });
+  lote.set(uso, {
+    count: (atual.exists() ? atual.data().count : 0) + 1,
+    lastId: id,
+    updatedAt: serverTimestamp(),
+  });
+  return lote.commit();
 }
 
 /** Bytes de um PNG 1x1 válido, para os testes de upload. */

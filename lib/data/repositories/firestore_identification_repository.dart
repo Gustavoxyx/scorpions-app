@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 
+import '../../core/constants/image_limits.dart';
+import '../../core/utils/usage_day.dart';
 import '../models/identification.dart';
 import '../models/secondary_view.dart';
 import '../services/failure.dart';
@@ -28,14 +30,9 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
   FirestoreIdentificationRepository({
     FirebaseFirestore? firestore,
     fb.FirebaseAuth? auth,
-    required ImageUploadService uploader,
+    required this._uploader,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? fb.FirebaseAuth.instance,
-        // A regra sugere `this._uploader`, mas Dart não aceita parâmetro
-        // nomeado com nome privado. Manter o campo público só para satisfazer
-        // o lint seria pior: exporia a dependência.
-        // ignore: prefer_initializing_formals
-        _uploader = uploader;
+        _auth = auth ?? fb.FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final fb.FirebaseAuth _auth;
@@ -104,12 +101,53 @@ class FirestoreIdentificationRepository implements IdentificationRepository {
       // misturar os dois cobrou a banda do usuário duas vezes.
       final IdentificationResult owned = result.copyWith(userId: uid);
 
-      await _collection
-          .doc(result.id)
+      // O registro e o incremento do contador do dia vão NO MESMO LOTE.
+      //
+      // As regras só aceitam a criação se o contador subir exatamente um, e
+      // por esta identificação (`lastId`). É o que limita quantos registros
+      // uma conta cria por dia sem depender de um servidor no meio do caminho.
+      //
+      // Transação, e não lote simples, porque o novo valor depende do atual:
+      // dois envios simultâneos leriam o mesmo número, e um deles seria
+      // recusado pela regra em vez de repetido pelo SDK.
+      final String dia = UsageDay.today();
+      final DocumentReference<Map<String, dynamic>> uso = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('usage')
+          .doc(dia);
+
+      await _firestore.runTransaction<void>((Transaction tx) async {
+        final DocumentSnapshot<Map<String, dynamic>> atual = await tx.get(uso);
+        final int usados = (atual.data()?['count'] as num?)?.toInt() ?? 0;
+
+        // Conferido aqui para dar a mensagem certa. Quem impede de fato é a
+        // regra: um cliente adulterado que pulasse este `if` seria recusado
+        // pelo servidor do mesmo jeito.
+        if (usados >= ImageLimits.maxIdentificationsPerDay) {
+          throw const AppFailure(
+            kind: FailureKind.quota,
+            message: 'Você atingiu o limite de identificações de hoje. '
+                'Tente novamente amanhã.',
+            code: 'daily-limit',
+          );
+        }
+
+        tx.set(
+          _collection.doc(result.id),
           // `toClientCreateMap` e não `toMap`: o cliente não grava resultado
-          // de análise. Ver a justificativa no modelo e o achado HIGH-1 da
-          // auditoria.
-          .set(FirestoreWriteMapper.prepare(owned.toClientCreateMap()));
+          // de análise.
+          FirestoreWriteMapper.prepare(<String, Object?>{
+            ...owned.toClientCreateMap(),
+            'quotaDay': dia,
+          }),
+        );
+        tx.set(uso, <String, Object?>{
+          'count': usados + 1,
+          'lastId': result.id,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
     });
   }
 

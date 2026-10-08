@@ -13,6 +13,7 @@ import {
   ALICE_EMAIL,
   BOB,
   asUser,
+  criarIdentificacao,
   createTestEnv,
   seedUsers,
 } from './helpers.mjs';
@@ -86,9 +87,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
   it('a identificação que o app grava é aceita', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertSucceeds(
-      setDoc(
-        doc(db, 'identifications', 'ident-1'),
-        hydrate(shapes.identificationClientCreate),
+      criarIdentificacao(db, ALICE, 'ident-1', hydrate(shapes.identificationClientCreate),
       ),
     );
   });
@@ -105,9 +104,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
   it('o documento completo, com resultado de análise, é RECUSADO do cliente', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(
-        doc(db, 'identifications', 'ident-forjado'),
-        hydrate(shapes.identificationServerFull),
+      criarIdentificacao(db, ALICE, 'ident-forjado', hydrate(shapes.identificationServerFull),
       ),
     );
   });
@@ -117,9 +114,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
   it('a identificação de DUAS VISTAS que o app grava é aceita', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertSucceeds(
-      setDoc(
-        doc(db, 'identifications', 'ident-3'),
-        hydrate(shapes.identificationTwoViewsClientCreate),
+      criarIdentificacao(db, ALICE, 'ident-3', hydrate(shapes.identificationTwoViewsClientCreate),
       ),
     );
   });
@@ -129,9 +124,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
     // "concordaram" é o mesmo ataque de forjar `confidence: 0.99`.
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(
-        doc(db, 'identifications', 'ident-3-forjado'),
-        hydrate(shapes.identificationTwoViewsServerFull),
+      criarIdentificacao(db, ALICE, 'ident-3-forjado', hydrate(shapes.identificationTwoViewsServerFull),
       ),
     );
   });
@@ -141,7 +134,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
     // este prova que `fusion` sozinho é barrado, e não por carona.
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'ident-3-so-fusion'), {
+      criarIdentificacao(db, ALICE, 'ident-3-so-fusion', {
         ...hydrate(shapes.identificationTwoViewsClientCreate),
         fusion: shapes.identificationTwoViewsServerFull.fusion,
       }),
@@ -151,9 +144,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
   it('a rejeição completa também é recusada do cliente', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(
-        doc(db, 'identifications', 'ident-forjado-2'),
-        hydrate(shapes.identificationRejectedServerFull),
+      criarIdentificacao(db, ALICE, 'ident-forjado-2', hydrate(shapes.identificationRejectedServerFull),
       ),
     );
   });
@@ -169,7 +160,7 @@ describe('contrato: formas geradas pelo aplicativo', () => {
   it('a mesma forma com userId de outra pessoa é recusada', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'ident-3'), {
+      criarIdentificacao(db, ALICE, 'ident-3', {
         ...hydrate(shapes.identificationClientCreate),
         userId: BOB,
       }),

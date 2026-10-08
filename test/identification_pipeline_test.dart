@@ -65,8 +65,15 @@ class _AuthFalso implements AuthRepository {
   @override
   Future<void> sendEmailVerification() => throw UnimplementedError();
 
+  /// O que a recarga devolve. Nulo simula a recarga falhando.
+  AppUser? aposRecarga;
+
   @override
-  Future<AppUser?> reload() => throw UnimplementedError();
+  Future<AppUser?> reload() async {
+    final AppUser? novo = aposRecarga;
+    if (novo == null) throw UnimplementedError();
+    return _user = novo;
+  }
 
   @override
   Future<void> reauthenticate(String password) => throw UnimplementedError();
@@ -221,6 +228,7 @@ void main() {
   IdentificationPipeline montar({
     ConnectivityService? rede,
     ImageUploadService? envio,
+    bool exigeEmail = false,
   }) {
     return IdentificationPipeline(
       auth: auth,
@@ -228,6 +236,7 @@ void main() {
       processing: const DefaultImageProcessingService(),
       uploader: envio ?? uploader,
       connectivity: rede ?? const AlwaysOnlineConnectivityService(),
+      requireVerifiedEmail: exigeEmail,
     );
   }
 
@@ -255,6 +264,52 @@ void main() {
       expect(p.isValid, isFalse);
       expect(p.validation.code, ImageValidationCode.tooFewPixels);
       expect(p.validation.message, isNotEmpty);
+    });
+  });
+
+  group('e-mail confirmado', () {
+    test('sem confirmação, recusa antes de criar qualquer coisa', () async {
+      final IdentificationPipeline p = montar(exigeEmail: true);
+      final CapturedImage imagem = _imagem(_foto());
+      final ImagePreparation prep = await p.prepare(imagem);
+
+      await expectLater(
+        p.submit(image: imagem, preparation: prep),
+        throwsA(isA<AppFailure>()
+            .having((AppFailure f) => f.code, 'code', 'email-not-verified')),
+      );
+      expect(repo.gravacoes, isEmpty,
+          reason: 'um registro criado aqui seria recusado pelas regras e '
+              'ficaria só na memória do aparelho');
+    });
+
+    test('quem acabou de confirmar no navegador não é barrado', () async {
+      // O usuário em memória ainda diz "não confirmado"; a recarga traz a
+      // verdade. Recusar aqui seria errar no pior momento.
+      auth.aposRecarga = const AppUser(
+        id: 'uid-do-dono',
+        name: 'Gustavo',
+        email: 'g@exemplo.com',
+        emailVerified: true,
+      );
+      final IdentificationPipeline p = montar(exigeEmail: true);
+      final CapturedImage imagem = _imagem(_foto());
+      final ImagePreparation prep = await p.prepare(imagem);
+
+      final PipelineOutcome saida =
+          await p.submit(image: imagem, preparation: prep);
+      expect(saida.cancelled, isFalse);
+      expect(repo.gravacoes, isNotEmpty);
+    });
+
+    test('no modo simulado a exigência não existe', () async {
+      final IdentificationPipeline p = montar();
+      final CapturedImage imagem = _imagem(_foto());
+      final ImagePreparation prep = await p.prepare(imagem);
+
+      final PipelineOutcome saida =
+          await p.submit(image: imagem, preparation: prep);
+      expect(saida.cancelled, isFalse);
     });
   });
 

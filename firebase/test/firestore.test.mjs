@@ -14,6 +14,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   deleteDoc,
 } from 'firebase/firestore';
 
@@ -24,8 +25,11 @@ import {
   ALICE_EMAIL,
   BOB,
   BOB_EMAIL,
+  asUnverifiedUser,
   asUser,
+  criarIdentificacao,
   createTestEnv,
+  diaUtc,
   seedContent,
   seedUsers,
 } from './helpers.mjs';
@@ -236,14 +240,14 @@ describe('identifications', () => {
   it('cria uma identificação própria', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertSucceeds(
-      setDoc(doc(db, 'identifications', 'nova-1'), validDoc(ALICE)),
+      criarIdentificacao(db, ALICE, 'nova-1', validDoc(ALICE)),
     );
   });
 
   it('NÃO cria identificação em nome de outra pessoa', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'nova-2'), validDoc(BOB)),
+      criarIdentificacao(db, ALICE, 'nova-2', validDoc(BOB)),
     );
   });
 
@@ -261,7 +265,7 @@ describe('identifications', () => {
   it('cria uma identificação com duas vistas', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertSucceeds(
-      setDoc(doc(db, 'identifications', 'duas-1'), {
+      criarIdentificacao(db, ALICE, 'duas-1', {
         ...validDoc(ALICE),
         viewCount: 2,
         secondaryView: segundaVista(),
@@ -283,7 +287,7 @@ describe('identifications', () => {
       { qualquerCoisa: 'x' },
     ]) {
       await assertFails(
-        setDoc(doc(db, 'identifications', 'duas-forjada'), {
+        criarIdentificacao(db, ALICE, 'duas-forjada', {
           ...validDoc(ALICE),
           viewCount: 2,
           secondaryView: { ...segundaVista(), ...extra },
@@ -297,7 +301,7 @@ describe('identifications', () => {
     // `confidence: 0.99`, por outro campo.
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'duas-fusion'), {
+      criarIdentificacao(db, ALICE, 'duas-fusion', {
         ...validDoc(ALICE),
         viewCount: 2,
         secondaryView: segundaVista(),
@@ -310,7 +314,7 @@ describe('identifications', () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     for (const n of [0, 3, 99, -1, '2']) {
       await assertFails(
-        setDoc(doc(db, 'identifications', 'duas-n'), {
+        criarIdentificacao(db, ALICE, 'duas-n', {
           ...validDoc(ALICE),
           viewCount: n,
         }),
@@ -329,7 +333,7 @@ describe('identifications', () => {
       { ...segundaVista(), imageQuality: 'boa' },
     ]) {
       await assertFails(
-        setDoc(doc(db, 'identifications', 'duas-ruim'), {
+        criarIdentificacao(db, ALICE, 'duas-ruim', {
           ...validDoc(ALICE),
           viewCount: 2,
           secondaryView: ruim,
@@ -343,7 +347,7 @@ describe('identifications', () => {
     // os caminhos quando o envio termina.
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     const ref = doc(db, 'identifications', 'duas-2');
-    await setDoc(ref, {
+    await criarIdentificacao(db, ALICE, ref.id, {
       ...validDoc(ALICE),
       viewCount: 2,
       secondaryView: segundaVista(),
@@ -365,7 +369,7 @@ describe('identifications', () => {
     // O caminho "criar limpo, reescrever depois".
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     const ref = doc(db, 'identifications', 'duas-3');
-    await setDoc(ref, {
+    await criarIdentificacao(db, ALICE, ref.id, {
       ...validDoc(ALICE),
       viewCount: 2,
       secondaryView: segundaVista(),
@@ -379,7 +383,7 @@ describe('identifications', () => {
   it('NÃO cria com status inválido', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'nova-3'), {
+      criarIdentificacao(db, ALICE, 'nova-3', {
         ...validDoc(ALICE),
         status: 'aprovado_por_mim',
       }),
@@ -397,7 +401,7 @@ describe('identifications', () => {
   it('NÃO cria com confiança — nem um valor válido', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'forja-1'), {
+      criarIdentificacao(db, ALICE, 'forja-1', {
         ...validDoc(ALICE),
         confidence: 0.99,
       }),
@@ -407,7 +411,7 @@ describe('identifications', () => {
   it('NÃO cria com espécie', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'forja-2'), {
+      criarIdentificacao(db, ALICE, 'forja-2', {
         ...validDoc(ALICE),
         speciesId: 'tityus-serrulatus',
       }),
@@ -417,7 +421,7 @@ describe('identifications', () => {
   it('NÃO cria com versão de modelo', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'forja-3'), {
+      criarIdentificacao(db, ALICE, 'forja-3', {
         ...validDoc(ALICE),
         modelVersion: 'scorpion-v9.9',
       }),
@@ -427,7 +431,7 @@ describe('identifications', () => {
   it('NÃO cria já identificada — status é conclusão de análise', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'forja-4'), {
+      criarIdentificacao(db, ALICE, 'forja-4', {
         ...validDoc(ALICE),
         status: 'identified',
       }),
@@ -437,7 +441,7 @@ describe('identifications', () => {
   it('NÃO cria com revisão humana forjada', async () => {
     const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'forja-5'), {
+      criarIdentificacao(db, ALICE, 'forja-5', {
         ...validDoc(ALICE),
         reviewedBy: 'especialista-inventado',
       }),
@@ -521,7 +525,351 @@ describe('identifications', () => {
   it('quem não está autenticado não cria nada', async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(
-      setDoc(doc(db, 'identifications', 'anon-1'), validDoc(ALICE)),
+      criarIdentificacao(db, ALICE, 'anon-1', validDoc(ALICE)),
+    );
+  });
+});
+
+
+// =============================================================================
+// O que o cliente NÃO muda, o que ele NÃO acrescenta, e quanto ele pode criar
+// =============================================================================
+describe('identifications: estado, forma fechada e limite de criação', () => {
+  const docValido = (userId) => ({
+    userId,
+    imageUrl: null,
+    status: 'processing',
+    pipelineVersion: 'pipeline-v1',
+    createdAt: serverTimestamp(),
+  });
+
+  // -- estado ------------------------------------------------------------------
+
+  it('NÃO marca como identificada uma identificação em processamento', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await criarIdentificacao(db, ALICE, 'estado-1', docValido(ALICE));
+    await assertFails(
+      updateDoc(doc(db, 'identifications', 'estado-1'), { status: 'identified' }),
+    );
+  });
+
+  it('NÃO marca como rejeitada, nem como erro', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await criarIdentificacao(db, ALICE, 'estado-2', docValido(ALICE));
+    const ref = doc(db, 'identifications', 'estado-2');
+    await assertFails(updateDoc(ref, { status: 'rejected' }));
+    await assertFails(updateDoc(ref, { status: 'error' }));
+  });
+
+  it('NÃO devolve ao processamento um registro já analisado', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'identifications', 'id-alice-1'), { status: 'processing' }),
+    );
+  });
+
+  // -- forma fechada -----------------------------------------------------------
+
+  it('NÃO cria com um campo que as regras não conhecem', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'forma-1', {
+        ...docValido(ALICE),
+        anotacoes: 'x'.repeat(1000),
+      }),
+    );
+  });
+
+  it('NÃO acrescenta campo desconhecido numa atualização', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await criarIdentificacao(db, ALICE, 'forma-2', docValido(ALICE));
+    await assertFails(
+      updateDoc(doc(db, 'identifications', 'forma-2'), { anotacoes: 'x' }),
+    );
+  });
+
+  it('NÃO grava `imageUrl` que não seja texto curto', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'forma-3', {
+        ...docValido(ALICE),
+        imageUrl: 'x'.repeat(600),
+      }),
+    );
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'forma-4', {
+        ...docValido(ALICE),
+        imageUrl: { caminho: 'users/x' },
+      }),
+    );
+  });
+
+  it('aceita as medidas de qualidade que o aplicativo grava', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      criarIdentificacao(db, ALICE, 'forma-5', {
+        ...docValido(ALICE),
+        imageQuality: {
+          quality: 'acceptable',
+          score: 0.62,
+          brightness: 0.41,
+          contrast: 0.12,
+          sharpness: 0.0031,
+          width: 1600,
+          height: 1200,
+          warnings: ['softFocus'],
+        },
+      }),
+    );
+  });
+
+  it('NÃO usa as medidas de qualidade como depósito', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'forma-6', {
+        ...docValido(ALICE),
+        imageQuality: { quality: 'good', confidence: 0.99 },
+      }),
+    );
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'forma-7', {
+        ...docValido(ALICE),
+        imageQuality: { quality: 'good', warnings: ['x'.repeat(5000)] },
+      }),
+    );
+  });
+
+  it('NÃO troca a versão do pipeline depois de criada', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await criarIdentificacao(db, ALICE, 'forma-8', docValido(ALICE));
+    await assertFails(
+      updateDoc(doc(db, 'identifications', 'forma-8'), {
+        pipelineVersion: 'outra',
+      }),
+    );
+  });
+
+  // -- e-mail confirmado -------------------------------------------------------
+
+  it('NÃO cria com o e-mail ainda sem confirmar', async () => {
+    const db = asUnverifiedUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'email-1', docValido(ALICE)),
+    );
+  });
+
+  it('sem confirmar o e-mail, ainda lê e apaga o que já tinha', async () => {
+    const db = asUnverifiedUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(getDoc(doc(db, 'identifications', 'id-alice-1')));
+    await assertSucceeds(deleteDoc(doc(db, 'identifications', 'id-alice-1')));
+  });
+
+  // -- limite de criação -------------------------------------------------------
+
+  it('NÃO cria sem cobrar o contador do dia', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'identifications', 'limite-1'), {
+        ...docValido(ALICE),
+        quotaDay: diaUtc(),
+      }),
+    );
+  });
+
+  it('NÃO cria duas identificações com um incremento só', async () => {
+    // O ataque que `lastId` existe para fechar: um lote, um incremento, e
+    // quantas identificações couberem.
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const dia = diaUtc();
+    const lote = writeBatch(db);
+    lote.set(doc(db, 'identifications', 'limite-2a'), {
+      ...docValido(ALICE),
+      quotaDay: dia,
+    });
+    lote.set(doc(db, 'identifications', 'limite-2b'), {
+      ...docValido(ALICE),
+      quotaDay: dia,
+    });
+    lote.set(doc(db, `users/${ALICE}/usage/${dia}`), {
+      count: 1,
+      lastId: 'limite-2a',
+      updatedAt: serverTimestamp(),
+    });
+    await assertFails(lote.commit());
+  });
+
+  it('cria até o limite do dia, e NÃO passa dele', async () => {
+    const dia = diaUtc();
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`users/${ALICE}/usage/${dia}`).set({
+        count: 59,
+        lastId: 'anterior',
+        updatedAt: new Date(),
+      });
+    });
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      criarIdentificacao(db, ALICE, 'limite-60', docValido(ALICE)),
+    );
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'limite-61', docValido(ALICE)),
+    );
+  });
+
+  it('aceita o dia vizinho, para relógio fora de hora perto da virada', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      criarIdentificacao(db, ALICE, 'dia-1', docValido(ALICE), diaUtc(-1)),
+    );
+    await assertSucceeds(
+      criarIdentificacao(db, ALICE, 'dia-2', docValido(ALICE), diaUtc(1)),
+    );
+  });
+
+  it('NÃO aceita um dia distante, que seria um contador novo a cada vez', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'dia-3', docValido(ALICE), diaUtc(5)),
+    );
+    await assertFails(
+      criarIdentificacao(db, ALICE, 'dia-4', docValido(ALICE), diaUtc(-5)),
+    );
+  });
+
+  it('NÃO cobra no contador de outra pessoa', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const dia = diaUtc();
+    const lote = writeBatch(db);
+    lote.set(doc(db, 'identifications', 'limite-3'), {
+      ...docValido(ALICE),
+      quotaDay: dia,
+    });
+    lote.set(doc(db, `users/${BOB}/usage/${dia}`), {
+      count: 1,
+      lastId: 'limite-3',
+      updatedAt: serverTimestamp(),
+    });
+    await assertFails(lote.commit());
+  });
+
+  it('o dono NÃO zera, NÃO recua e NÃO apaga o contador de criação', async () => {
+    const dia = diaUtc();
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`users/${ALICE}/usage/${dia}`).set({
+        count: 40,
+        lastId: 'anterior',
+        updatedAt: new Date(),
+      });
+    });
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const ref = doc(db, `users/${ALICE}/usage/${dia}`);
+    const forma = (count) => ({
+      count,
+      lastId: 'qualquer',
+      updatedAt: serverTimestamp(),
+    });
+    await assertFails(setDoc(ref, forma(1)));
+    await assertFails(setDoc(ref, forma(39)));
+    await assertFails(setDoc(ref, forma(40)));
+    await assertFails(deleteDoc(ref));
+  });
+
+  it('o contador NÃO guarda campo além dos três previstos', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, `users/${ALICE}/usage/${diaUtc()}`), {
+        count: 1,
+        lastId: 'x',
+        updatedAt: serverTimestamp(),
+        extra: 'x'.repeat(1000),
+      }),
+    );
+  });
+});
+
+// =============================================================================
+// feedback — fechada até a funcionalidade existir
+// =============================================================================
+describe('feedback', () => {
+  it('ninguém grava nem lê feedback enquanto a tela não existe', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'feedback', 'f-1'), {
+        userId: ALICE,
+        createdAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(getDoc(doc(db, 'feedback', 'f-1')));
+    const adminDb = asUser(testEnv, ADMIN, ADMIN_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(adminDb, 'feedback', 'f-2'), {
+        userId: ADMIN,
+        createdAt: serverTimestamp(),
+      }),
+    );
+  });
+});
+
+// =============================================================================
+// users — registro do aceite do aviso de privacidade
+// =============================================================================
+describe('users: aceite do aviso de privacidade', () => {
+  const cadastro = (extra) => ({
+    uid: ALICE,
+    name: 'Alice',
+    email: ALICE_EMAIL,
+    role: 'user',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...extra,
+  });
+
+  it('o cadastro registra a versão aceita e o momento do servidor', async () => {
+    await testEnv.clearFirestore();
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'users', ALICE),
+        cadastro({ privacyVersion: '2026-10', consentAt: serverTimestamp() }),
+      ),
+    );
+  });
+
+  it('NÃO registra aceite com data escolhida pelo aparelho', async () => {
+    await testEnv.clearFirestore();
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'users', ALICE),
+        cadastro({ privacyVersion: '2026-10', consentAt: new Date(2020, 0, 1) }),
+      ),
+    );
+  });
+
+  it('NÃO registra data de aceite sem dizer qual texto foi aceito', async () => {
+    await testEnv.clearFirestore();
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    await assertFails(
+      setDoc(doc(db, 'users', ALICE), cadastro({ consentAt: serverTimestamp() })),
+    );
+  });
+
+  it('uma conta antiga renova o aceite, com o momento do servidor', async () => {
+    const db = asUser(testEnv, ALICE, ALICE_EMAIL).firestore();
+    const ref = doc(db, 'users', ALICE);
+    await assertSucceeds(
+      updateDoc(ref, {
+        privacyVersion: '2026-10',
+        consentAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(ref, {
+        privacyVersion: '2027-01',
+        consentAt: new Date(2020, 0, 1),
+        updatedAt: serverTimestamp(),
+      }),
     );
   });
 });

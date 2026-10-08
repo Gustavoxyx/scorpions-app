@@ -179,6 +179,14 @@ class FirebaseAuthRepository implements AuthRepository {
       final fb.User? atualizado = _auth.currentUser;
       if (atualizado == null) return null;
 
+      // As Security Rules leem `email_verified` do ID token, não deste objeto.
+      // O token em uso foi emitido antes da confirmação e só se renova sozinho
+      // dentro de uma hora — sem forçar a troca aqui, a pessoa confirmaria o
+      // e-mail e continuaria sendo recusada pelo servidor.
+      if (atualizado.emailVerified) {
+        await atualizado.getIdToken(true);
+      }
+
       final AppUser perfil = await _ensureProfile(
         atualizado,
         fallbackName: _nameFromEmail(atualizado.email),

@@ -112,6 +112,7 @@ class IdentificationPipeline {
     required this._processing,
     required this._uploader,
     required this._connectivity,
+    this.requireVerifiedEmail = false,
     this.detector = const MockScorpionDetectionService(),
     this.classifier = const MockSpeciesClassificationService(),
   });
@@ -121,6 +122,14 @@ class IdentificationPipeline {
   final ImageProcessingService _processing;
   final ImageUploadService _uploader;
   final ConnectivityService _connectivity;
+
+  /// Se o envio exige e-mail confirmado.
+  ///
+  /// Ligado quando há infraestrutura de verdade por trás: as Security Rules
+  /// recusam a criação de conteúdo por conta sem confirmação, e conferir aqui
+  /// troca um "permissão negada" sem explicação por uma frase que diz o que
+  /// fazer. No modo simulado fica desligado — ali não há e-mail para confirmar.
+  final bool requireVerifiedEmail;
 
   /// Contratos da Fase 5. Públicos porque um teste precisa poder trocar o
   /// dublê sem reconstruir o pipeline inteiro.
@@ -197,6 +206,7 @@ class IdentificationPipeline {
 
     final ProcessedImage? processada = preparation.image;
     final String uid = _requireUid();
+    await _requireVerifiedEmail();
     final String id = newId();
 
     if (!await _connectivity.hasConnection()) {
@@ -408,6 +418,31 @@ class IdentificationPipeline {
       }
     }
     return const PipelineOutcome.cancelled();
+  }
+
+  /// Interrompe se o envio exige e-mail confirmado e ele não foi.
+  ///
+  /// A confirmação acontece num navegador, fora do aplicativo, e o usuário em
+  /// memória não fica sabendo. Por isso há uma recarga antes de recusar:
+  /// barrar quem acabou de confirmar seria o pior momento para errar.
+  Future<void> _requireVerifiedEmail() async {
+    if (!requireVerifiedEmail) return;
+    if (_auth.currentUser?.emailVerified ?? false) return;
+
+    bool confirmado = false;
+    try {
+      confirmado = (await _auth.reload())?.emailVerified ?? false;
+    } catch (_) {
+      // Sem rede para recarregar, vale o que está em memória: não confirmado.
+    }
+    if (confirmado) return;
+
+    throw const AppFailure(
+      kind: FailureKind.permission,
+      message: 'Confirme seu e-mail para enviar fotografias. '
+          'O link está em Perfil › Configurações › Meus dados.',
+      code: 'email-not-verified',
+    );
   }
 
   String _requireUid() {

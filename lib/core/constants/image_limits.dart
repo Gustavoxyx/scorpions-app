@@ -101,27 +101,12 @@ abstract final class ImageLimits {
 
   // -- Contenção de abuso (§21) -----------------------------------------------
 
-  /// Identificações por usuário por dia.
+  /// Quantas identificações uma conta cria por dia.
   ///
-  /// **Quem aplica este número é o servidor**, não este arquivo.
-  ///
-  /// O backend conta em `users/{uid}/quotas/{dia}`, dentro de uma transação,
-  /// antes de cada análise (`backend/app/quota.py`), e a regra do Firestore
-  /// nega escrita nesse caminho a todo cliente — senão bastaria zerar o próprio
-  /// contador. O número de lá vem da variável `MAX_ANALYSES_PER_DAY`; este
-  /// daqui é o **espelho**, para a tela poder dizer "restam N" sem inventar.
-  ///
-  /// Este comentário já mentiu duas vezes, e vale deixar o histórico: primeiro
-  /// dizia que havia "um freio de cliente", e não havia; depois passou a dizer
-  /// que ninguém aplicava o limite, o que foi verdade até o backend ganhar a
-  /// cota. Comentário que descreve mecanismo é o primeiro a ficar para trás.
-  ///
-  /// Continua não havendo freio de cliente, e pelo mesmo motivo de antes: ele
-  /// custaria uma consulta por envio e um cliente adulterado o ignoraria.
-  ///
-  /// Limite do que isto cobre: são **análises**, não envios ao Storage. Um
-  /// cliente adulterado ainda pode enviar imagens sem pedir análise; o que
-  /// limita isso é só o teto de [maxBytes] por arquivo.
+  /// Três lugares precisam concordar neste número, e um teste confere:
+  /// `dailyCreationLimit()` em `firebase/firestore.rules`, que é quem de fato
+  /// impede; `max_analyses_per_day` no backend, que limita as análises; e esta
+  /// constante, que o aplicativo usa para dar a mensagem antes de tentar.
   static const int maxIdentificationsPerDay = 60;
 
   /// Envios simultâneos. Acima disso a fila é do aparelho, não da rede.

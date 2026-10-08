@@ -9,6 +9,7 @@ import {
   BOB,
   BOB_EMAIL,
   TINY_PNG,
+  asUnverifiedUser,
   asUser,
   createTestEnv,
 } from './helpers.mjs';
@@ -37,6 +38,13 @@ describe('upload de imagem de identificação', () => {
   it('envia para o próprio caminho', async () => {
     const storage = asUser(testEnv, ALICE, ALICE_EMAIL).storage();
     await assertSucceeds(
+      uploadBytes(ref(storage, alicePath), TINY_PNG, imageMeta),
+    );
+  });
+
+  it('NÃO envia com o e-mail ainda sem confirmar', async () => {
+    const storage = asUnverifiedUser(testEnv, ALICE, ALICE_EMAIL).storage();
+    await assertFails(
       uploadBytes(ref(storage, alicePath), TINY_PNG, imageMeta),
     );
   });
