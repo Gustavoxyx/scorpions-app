@@ -33,9 +33,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import account, quota
+from . import account, analysis, quota, ratelimit
+from .appcheck import verified_app
 from .audit import AuditAction, AuditOutcome, record
-from .auth import Caller, Role, current_caller, firebase_app
+from .auth import Caller, Role, current_caller, current_staff, firebase_app
 from .config import ConfigError, Settings, get_settings
 from .fusion import CALIBRATED
 from .schemas import (
@@ -97,10 +98,22 @@ app.add_middleware(
     # disparar pedidos usando o token do usuário.
     allow_origins=list(_cfg.allowed_origins) if _cfg else [],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Firebase-AppCheck"],
     max_age=600,
 )
+
+
+# O que todo endpoint de `/v1` exige antes de qualquer outra coisa: caber na
+# janela por endereço e, quando ligado, vir do aplicativo de verdade. Ficam
+# fora do `/health`, que é o provedor de hospedagem quem consulta.
+_V1 = [Depends(ratelimit.throttle_ip), Depends(verified_app)]
+
+# Janelas por conta. A análise já tem a cota diária; esta contém a rajada.
+_LIMITE_ANALISE = Depends(ratelimit.per_user(10, 60))
+_LIMITE_CONTA = Depends(ratelimit.per_user(30, 60))
+_LIMITE_EXCLUSAO = Depends(ratelimit.per_user(5, 3600))
+_LIMITE_REVISAO = Depends(ratelimit.per_user(60, 60))
 
 
 @app.middleware("http")
@@ -149,11 +162,15 @@ async def health() -> HealthResponse:
     return HealthResponse(
         status="ok" if cfg else "unconfigured",
         thresholdsCalibrated=CALIBRATED,
-        modelAvailable=False,
+        modelAvailable=analysis.get_analyzer() is not None,
     )
 
 
-@app.post("/v1/analyses", response_model=AnalysisResponse)
+@app.post(
+    "/v1/analyses",
+    response_model=AnalysisResponse,
+    dependencies=[*_V1, _LIMITE_ANALISE],
+)
 async def create_analysis(
     payload: AnalysisRequest,
     request: Request,
@@ -167,11 +184,9 @@ async def create_analysis(
     """
     rid = getattr(request.state, "request_id", "?")
 
-    # O caminho carrega o dono. Um `sessionId` apontando para a pasta de outra
-    # pessoa não encontra nada, porque o prefixo é montado a partir do uid
-    # verificado — não do que veio no corpo. É o IDOR fechado por construção.
-    prefixo = f"users/{caller.uid}/identifications/{payload.sessionId}"
-    del prefixo  # usado quando o modelo existir; aqui só documenta a construção
+    # As regras exigem e-mail confirmado para criar a identificação; pedir a
+    # análise dela segue a mesma política.
+    caller.requires_verified_email()
 
     # A cota é cobrada ANTES de qualquer trabalho (MEDIUM-4).
     #
@@ -202,9 +217,29 @@ async def create_analysis(
         },
     )
 
+    # As imagens são conferidas AQUI, no caminho que o modelo vai percorrer:
+    # formato real, tamanho e dimensões, a partir dos bytes e não do que o
+    # cliente declarou. Sem bucket configurado a lista vem vazia, e o registro
+    # diz isso em vez de sugerir que algo foi conferido.
+    vistas = analysis.load_views(settings, caller.uid, payload)
+    log.info(
+        "imagens da sessão",
+        extra={
+            "request_id": rid,
+            "checked": len(vistas),
+            "storage": bool(settings.storage_bucket),
+        },
+    )
+
+    analisador = analysis.get_analyzer()
+    if analisador is not None:
+        return analisador.analyze(
+            session_id=payload.sessionId, request_id=rid, views=vistas
+        )
+
     # O modelo ainda não existe, e isto é dito em voz alta em vez de
     # devolvido como resultado vazio que a tela interpretaria como "nada
-    # encontrado". O §12 da Fase 5 proíbe fingir que o modelo existe.
+    # encontrado".
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail=(
@@ -215,7 +250,11 @@ async def create_analysis(
     )
 
 
-@app.get("/v1/me/quota", response_model=QuotaResponse)
+@app.get(
+    "/v1/me/quota",
+    response_model=QuotaResponse,
+    dependencies=[*_V1, _LIMITE_CONTA],
+)
 async def read_quota(
     caller: Caller = Depends(current_caller),
     settings: Settings = Depends(get_settings),
@@ -231,7 +270,7 @@ async def read_quota(
     )
 
 
-@app.get("/v1/me/data")
+@app.get("/v1/me/data", dependencies=[*_V1, _LIMITE_CONTA])
 async def export_my_data(
     request: Request,
     caller: Caller = Depends(current_caller),
@@ -246,7 +285,11 @@ async def export_my_data(
     return account.export_data(settings, caller, rid)
 
 
-@app.delete("/v1/me", response_model=DeletionResponse)
+@app.delete(
+    "/v1/me",
+    response_model=DeletionResponse,
+    dependencies=[*_V1, _LIMITE_EXCLUSAO],
+)
 async def delete_my_account(
     request: Request,
     caller: Caller = Depends(current_caller),
@@ -280,10 +323,10 @@ async def delete_my_account(
     )
 
 
-@app.get("/v1/review-queue")
+@app.get("/v1/review-queue", dependencies=[*_V1, _LIMITE_REVISAO])
 async def review_queue(
     request: Request,
-    caller: Caller = Depends(current_caller),
+    caller: Caller = Depends(current_staff),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Fila de revisão (§19). Só para quem revisa.
@@ -293,6 +336,8 @@ async def review_queue(
     continuaria respondendo a quem soubesse o caminho.
     """
     caller.requires(Role.SPECIALIST, Role.REVIEWER, Role.ADMIN)
+    if settings.require_mfa_for_staff:
+        caller.requires_second_factor()
 
     # Acesso privilegiado a dado de outras pessoas gera registro (FASE 24).
     #

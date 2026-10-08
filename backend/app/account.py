@@ -60,7 +60,7 @@ _TAMANHO_DO_LOTE = 400
 #: depender dele significaria que uma subcoleção nova passa a ser apagada sem
 #: ninguém ter decidido isso. Preferir que a lista precise ser atualizada à mão
 #: e que o esquecimento apareça num teste.
-_SUBCOLECOES = ("quotas",)
+_SUBCOLECOES = ("quotas", "usage")
 
 
 @dataclass

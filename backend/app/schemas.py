@@ -15,6 +15,8 @@ tentar escrevê-los mesmo assim. Três camadas dizendo a mesma coisa.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -85,10 +87,58 @@ class HealthResponse(BaseModel):
     modelAvailable: bool
 
 
+class SpeciesScore(BaseModel):
+    """Uma hipótese de espécie, com a confiança que o modelo atribuiu."""
+
+    speciesId: str = Field(max_length=64)
+    scientificName: str = Field(max_length=120)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class FusionSummary(BaseModel):
+    """O que as vistas disseram em conjunto.
+
+    Os mesmos campos que o aplicativo lê em `fusion` no documento da
+    identificação. Vale para fusão tardia e para um modelo de duas entradas:
+    com um modelo conjunto, `agreement` simplesmente não vem.
+    """
+
+    viewCount: int = Field(ge=1, le=2)
+    agreeOnTop1: bool | None = None
+    agreement: float | None = Field(default=None, ge=0.0, le=1.0)
+    decisionLevel: str = Field(max_length=32)
+    reasons: list[str] = Field(default_factory=list, max_length=12)
+    thresholdsCalibrated: bool
+
+
 class AnalysisResponse(BaseModel):
+    """O resultado de uma análise.
+
+    CONTRATO PREPARADO, SEM IMPLEMENTAÇÃO. Nenhum endpoint devolve isto hoje:
+    sem modelo, `POST /v1/analyses` responde 503. A forma está fixada para que
+    a fase da IA seja preencher estes campos, e não negociar o formato com o
+    aplicativo já escrito.
+
+    Os nomes são os dos campos que só o servidor grava no Firestore — o que
+    sai daqui e o que fica no documento são a mesma coisa.
+    """
+
     sessionId: str
-    status: str
     requestId: str
+    status: Literal[
+        "processing", "identified", "low_confidence", "rejected", "error"
+    ]
+
+    species: SpeciesScore | None = None
+    alternatives: list[SpeciesScore] = Field(default_factory=list, max_length=5)
+    rejectionReason: str | None = Field(default=None, max_length=64)
+    modelVersion: str | None = Field(default=None, max_length=64)
+    fusion: FusionSummary | None = None
+
+    # A decisão foi encaminhada a um revisor humano. Separado de `status` de
+    # propósito: um resultado de baixa confiança pode ou não ir para revisão, e
+    # misturar os dois num campo só obrigaria a inventar estados.
+    needsHumanReview: bool = False
 
 
 class QuotaResponse(BaseModel):

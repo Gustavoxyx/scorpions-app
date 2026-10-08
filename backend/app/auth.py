@@ -16,7 +16,7 @@ quem é a análise, poderia pedir uma em nome de outra pessoa.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 import firebase_admin
@@ -60,7 +60,16 @@ class Caller:
     uid: str
     email: str | None
     email_verified: bool
-    role: Role
+
+    #: O papel, quando foi carregado. `None` significa **não consultado**, e
+    #: não "usuário comum": a maioria dos endpoints só precisa saber quem
+    #: chama, e ler o papel em todos eles custava uma leitura no Firestore por
+    #: requisição sem que ninguém a usasse. Quem precisa do papel depende de
+    #: `current_staff`. `requires` trata `None` como recusa.
+    role: Role | None = None
+
+    #: O segundo fator usado no login, quando houve (`totp`, `phone`).
+    second_factor: str | None = None
 
     #: Quando esta sessão foi autenticada, em segundos desde a época.
     #:
@@ -77,10 +86,22 @@ class Caller:
         qual dos dois é entrega informação sobre a estrutura interna a quem
         está sondando.
         """
-        if self.role not in permitidos:
+        if self.role is None or self.role not in permitidos:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operação não disponível para esta conta.",
+            )
+
+    def requires_second_factor(self) -> None:
+        """Interrompe se o login não usou segundo fator.
+
+        Para as operações de quem lê dado de outras pessoas. A senha de uma
+        conta privilegiada vazada não pode bastar.
+        """
+        if not self.second_factor:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Esta operação exige verificação em duas etapas.",
             )
 
     def requires_verified_email(self) -> None:
@@ -178,15 +199,10 @@ async def current_caller(
     authorization: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> Caller:
-    """Verifica o token e carrega o papel do chamador.
+    """Verifica o token e diz quem está chamando.
 
-    O papel vem do documento `users/{uid}` no Firestore, **não** de uma claim
-    que o cliente poderia influenciar. É uma leitura a mais por requisição, e
-    o custo é aceito: é o mesmo lugar que as Security Rules consultam, então
-    servidor e regras nunca discordam sobre quem é admin.
+    Não carrega o papel: ver `current_staff`.
     """
-    from .clients import firestore_client
-
     token = _extract_bearer(authorization)
     app = firebase_app(settings)
 
@@ -213,17 +229,37 @@ async def current_caller(
             detail="Autenticação inválida.",
         ) from erro
 
-    uid = decodificado["uid"]
-
-    perfil = firestore_client(settings).collection("users").document(uid).get()
-    dados = perfil.to_dict() if perfil.exists else {}
+    firebase_claims = decodificado.get("firebase") or {}
 
     return Caller(
-        uid=uid,
+        uid=decodificado["uid"],
         email=decodificado.get("email"),
         email_verified=bool(decodificado.get("email_verified", False)),
-        role=Role.parse(dados.get("role")),
         # `auth_time` pode faltar num token forjado ou muito antigo. Zero faz
         # `requires_recent_auth` recusar — falhar fechado.
         auth_time=int(decodificado.get("auth_time", 0) or 0),
+        second_factor=firebase_claims.get("sign_in_second_factor") or None,
     )
+
+
+async def current_staff(
+    caller: Caller = Depends(current_caller),
+    settings: Settings = Depends(get_settings),
+) -> Caller:
+    """O chamador, com o papel carregado.
+
+    O papel vem do documento `users/{uid}` no Firestore, **não** de uma claim
+    que o cliente poderia influenciar. É o mesmo lugar que as Security Rules
+    consultam, então servidor e regras nunca discordam sobre quem é admin.
+
+    Custa uma leitura, e por isso só os endpoints que conferem papel dependem
+    daqui. A leitura não é guardada em cache: um papel revogado precisa deixar
+    de valer na requisição seguinte.
+    """
+    from .clients import firestore_client
+
+    perfil = (
+        firestore_client(settings).collection("users").document(caller.uid).get()
+    )
+    dados = perfil.to_dict() if perfil.exists else {}
+    return replace(caller, role=Role.parse((dados or {}).get("role")))

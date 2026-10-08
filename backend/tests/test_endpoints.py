@@ -34,7 +34,7 @@ os.environ.setdefault(
 
 from app import account, quota  # noqa: E402
 from app import main as main_mod  # noqa: E402
-from app.auth import Caller, Role, current_caller  # noqa: E402
+from app.auth import Caller, Role, current_caller, current_staff  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -78,6 +78,9 @@ def cliente(monkeypatch):
 
 def _entrar_como(caller: Caller) -> None:
     app.dependency_overrides[current_caller] = lambda: caller
+    # O papel é carregado por uma dependência à parte, que lê o Firestore.
+    # Aqui ele vem pronto no `Caller` do teste.
+    app.dependency_overrides[current_staff] = lambda: caller
 
 
 # =============================================================================

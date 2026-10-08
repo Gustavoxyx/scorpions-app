@@ -55,6 +55,16 @@ class Settings:
     # disparar pedidos usando o token do usuário.
     allowed_origins: tuple[str, ...] = ()
 
+    # Exigir o token do App Check em toda chamada. Desligado até o provedor
+    # estar registrado no console — ver `appcheck.py` para a ordem que não
+    # barra o próprio aplicativo.
+    require_app_check: bool = False
+
+    # Exigir segundo fator de quem tem papel privilegiado. Desligado enquanto o
+    # MFA não estiver habilitado no projeto: ligado antes disso, trancaria para
+    # fora justamente as contas que administram o sistema.
+    require_mfa_for_staff: bool = False
+
     @property
     def is_configured(self) -> bool:
         return bool(self.project_id and self.service_account)
@@ -68,6 +78,10 @@ def _require(nome: str) -> str:
             "O serviço não sobe sem ela — ver backend/README.md."
         )
     return valor
+
+
+def _flag(nome: str) -> bool:
+    return os.environ.get(nome, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _service_account_from_env() -> dict:
@@ -124,4 +138,6 @@ def get_settings() -> Settings:
         allowed_origins=tuple(
             o.strip() for o in origens.split(",") if o.strip()
         ),
+        require_app_check=_flag("REQUIRE_APP_CHECK"),
+        require_mfa_for_staff=_flag("REQUIRE_MFA_FOR_STAFF"),
     )
