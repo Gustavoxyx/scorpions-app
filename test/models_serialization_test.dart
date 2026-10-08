@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scorpions/core/constants/decision_thresholds.dart';
 
 import 'package:scorpions/data/mock/mock_species.dart';
 import 'package:scorpions/data/models/app_user.dart';
@@ -65,8 +68,22 @@ void main() {
       expect(UserRole.user.isAdmin, isFalse);
     });
 
+    test('os papéis têm os mesmos nomes que o backend usa', () {
+      // O backend lê o papel do mesmo documento. O aplicativo chamava de
+      // `researcher` o que o servidor chama de `specialist`: um revisor
+      // cadastrado com o nome de um lado seria usuário comum para o outro.
+      final String auth = File('backend/app/auth.py').readAsStringSync();
+      final Set<String> doBackend = RegExp(r'^    [A-Z]+ = "([a-z]+)"$', multiLine: true)
+          .allMatches(auth)
+          .map((RegExpMatch m) => m.group(1)!)
+          .toSet();
+
+      expect(doBackend, isNotEmpty, reason: 'não consegui ler `Role` do backend');
+      expect(UserRole.values.map((UserRole r) => r.id).toSet(), doBackend);
+    });
+
     test('papéis futuros existem mas estão desabilitados', () {
-      expect(UserRole.researcher.enabled, isFalse);
+      expect(UserRole.specialist.enabled, isFalse);
       expect(UserRole.reviewer.enabled, isFalse);
     });
   });
@@ -163,7 +180,23 @@ void main() {
     });
 
     test('confiança baixa produz status lowConfidence', () {
-      expect(buildIdentified(0.5).status, IdentificationStatus.lowConfidence);
+      // O valor sai dos limiares, e não de um número fixo: este teste quebrou
+      // quando os dois conjuntos de limiares viraram um, porque 0,5 era
+      // "baixa" num deles e "média" no outro.
+      const double baixa =
+          (DecisionThresholds.rejectBelow + DecisionThresholds.mediumScore) / 2;
+      expect(buildIdentified(baixa).status, IdentificationStatus.lowConfidence);
+    });
+
+    test('a fronteira entre baixa e média é o limiar do motor de decisão', () {
+      expect(
+        buildIdentified(DecisionThresholds.mediumScore).status,
+        IdentificationStatus.identified,
+      );
+      expect(
+        buildIdentified(DecisionThresholds.mediumScore - 0.01).status,
+        IdentificationStatus.lowConfidence,
+      );
     });
 
     test('rejeição produz status rejected e nenhuma predição', () {

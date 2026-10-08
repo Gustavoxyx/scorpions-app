@@ -1,4 +1,4 @@
-import '../../core/constants/app_config.dart';
+import '../../core/constants/decision_thresholds.dart';
 
 /// Faixas de confiança do produto.
 ///
@@ -12,12 +12,14 @@ enum ConfidenceLevel {
   unidentified;
 
   /// Deriva a faixa a partir da probabilidade bruta do classificador.
+  /// Os mesmos limiares que o motor de decisão usa.
+  ///
+  /// Havia um segundo conjunto, em `AppConfig`, com valores diferentes: o motor
+  /// decidia "alta" e o selo da tela mostrava "média" para o mesmo número.
   static ConfidenceLevel fromScore(double score) {
-    if (score >= AppConfig.highConfidenceThreshold) return ConfidenceLevel.high;
-    if (score >= AppConfig.mediumConfidenceThreshold) {
-      return ConfidenceLevel.medium;
-    }
-    if (score >= AppConfig.rejectionThreshold) return ConfidenceLevel.low;
+    if (score >= DecisionThresholds.highScore) return ConfidenceLevel.high;
+    if (score >= DecisionThresholds.mediumScore) return ConfidenceLevel.medium;
+    if (score >= DecisionThresholds.rejectBelow) return ConfidenceLevel.low;
     return ConfidenceLevel.unidentified;
   }
 

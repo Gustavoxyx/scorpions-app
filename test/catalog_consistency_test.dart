@@ -17,14 +17,15 @@ import 'package:scorpions/data/models/species.dart';
 /// Não é duplicação a eliminar: são finalidades diferentes, e o `.mjs` já
 /// explica por que ele mesmo existe. O problema é **divergirem em silêncio**.
 ///
-/// A auditoria de otimização (achado D-2) encontrou exatamente isso: o modo de
-/// demonstração tem 8 espécies e o catálogo semeado tem 5. Ninguém havia
-/// notado, porque nada no projeto comparava os dois.
+/// O modo de demonstração mostra oito espécies e o catálogo publicado tem
+/// cinco. A diferença é deliberada e está registrada em
+/// `MockSpecies.demoOnlyIds`, com o motivo.
 ///
 /// # O que este teste protege
-/// A divergência **conhecida** está registrada abaixo e é aceita. O que o teste
-/// impede é a próxima: um nome científico corrigido em um lado e não no outro,
-/// uma família trocada, uma espécie nova que entra só no mock.
+/// Que o que pode ser **identificado** — `MockSpecies.identifiable` — é
+/// exatamente o catálogo publicado, nos dois sentidos. E que nada mais diverge:
+/// um nome científico corrigido em um lado e não no outro, uma família trocada,
+/// uma espécie nova que entra só em um dos dois.
 ///
 /// É o mesmo padrão de `contract_shapes_test.dart`, que já pegou um bug real
 /// neste projeto: comparar duas representações independentes do mesmo fato.
@@ -38,21 +39,6 @@ import 'package:scorpions/data/models/species.dart';
 /// que não conseguiu extrair, não inventa um resultado. Um teste que, ao não
 /// entender o arquivo, concluísse "está tudo igual" seria muito pior.
 void main() {
-  /// Espécies que existem só no modo de demonstração, e por quê.
-  ///
-  /// O catálogo da nuvem foi semeado com cinco espécies. Estas três ficaram
-  /// fora: o conteúdo científico delas no mock é de protótipo, e semear
-  /// protótipo na nuvem seria publicar como catálogo o que ainda não foi
-  /// curado (a curadoria é tarefa da Fase 7).
-  ///
-  /// Se uma delas entrar no `.mjs`, **apague a linha correspondente aqui.**
-  /// A lista existe para encolher.
-  const Set<String> soNaDemonstracao = <String>{
-    'tityus-obscurus',
-    'rhopalurus-rochai',
-    'ananteris-balzanii',
-  };
-
   final File arquivoMjs = File('firebase/species-data.mjs');
 
   /// Extrai `{id, scientificName, family, genus, specificEpithet}` do `.mjs`.
@@ -133,22 +119,38 @@ void main() {
     }
   });
 
-  test('a divergência conhecida é exatamente a registrada', () {
+  test('o que pode ser identificado é exatamente o catálogo publicado', () {
+    final Set<String> idsDoSeed =
+        lerCatalogoDoSeed().map((Map<String, String> e) => e['id']!).toSet();
+    final Set<String> identificaveis =
+        MockSpecies.identifiable.map((Species s) => s.id).toSet();
+
+    expect(
+      identificaveis,
+      idsDoSeed,
+      reason: 'a demonstração identificaria uma espécie que a produção não '
+          'tem, ou deixaria de fora uma que ela tem.\n'
+          '  só na demonstração: ${identificaveis.difference(idsDoSeed)}\n'
+          '  só no catálogo publicado: ${idsDoSeed.difference(identificaveis)}',
+    );
+  });
+
+  test('as espécies só de demonstração existem, e não estão publicadas', () {
     final Set<String> idsDoSeed =
         lerCatalogoDoSeed().map((Map<String, String> e) => e['id']!).toSet();
     final Set<String> idsDoMock =
         MockSpecies.all.map((Species s) => s.id).toSet();
 
-    final Set<String> faltandoNoSeed = idsDoMock.difference(idsDoSeed);
-
     expect(
-      faltandoNoSeed,
-      soNaDemonstracao,
-      reason: 'a diferença entre os dois catálogos mudou.\n'
-          '  no mock e não no seed: $faltandoNoSeed\n'
-          '  registrado como esperado: $soNaDemonstracao\n'
-          'Se a mudança foi intencional, atualize `soNaDemonstracao` neste '
-          'teste — e diga por quê, como as outras linhas dizem.',
+      idsDoMock.containsAll(MockSpecies.demoOnlyIds),
+      isTrue,
+      reason: '`demoOnlyIds` cita uma espécie que não existe no catálogo',
+    );
+    expect(
+      MockSpecies.demoOnlyIds.intersection(idsDoSeed),
+      isEmpty,
+      reason: 'uma espécie marcada como só de demonstração já foi publicada: '
+          'tire-a de `MockSpecies.demoOnlyIds`',
     );
   });
 

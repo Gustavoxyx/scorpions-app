@@ -296,6 +296,27 @@ abstract final class MockSpecies {
     ananterisBalzanii,
   ];
 
+  /// Espécies que existem só no modo de demonstração.
+  ///
+  /// O catálogo publicado tem cinco. Estas três ficaram fora de propósito: o
+  /// conteúdo delas é de protótipo, e semeá-lo na nuvem seria publicar como
+  /// catálogo o que ainda não foi curado. Elas aparecem na aba Catálogo da
+  /// demonstração, para navegação, e em nenhum resultado de identificação.
+  ///
+  /// A lista existe para encolher: quando uma espécie entrar em
+  /// `firebase/species-data.mjs`, sai daqui. Um teste confere os dois lados.
+  static const Set<String> demoOnlyIds = <String>{
+    'tityus-obscurus',
+    'rhopalurus-rochai',
+    'ananteris-balzanii',
+  };
+
+  /// As espécies que uma identificação pode devolver: exatamente o catálogo
+  /// publicado. É o vocabulário que um classificador de verdade vai ter.
+  static final List<Species> identifiable = List<Species>.unmodifiable(
+    all.where((Species s) => !demoOnlyIds.contains(s.id)),
+  );
+
   static Species? byId(String id) {
     for (final Species s in all) {
       if (s.id == id) return s;

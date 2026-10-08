@@ -31,9 +31,9 @@ abstract interface class CapturePlanService {
 /// A regra tem uma única inversão, e ela é deliberada:
 ///
 /// - Primeira foto **nítida e bem exposta** → pede a **cauda**. É a vista com
-///   maior poder de separação entre as espécies do catálogo, que são quatro
-///   *Tityus* e um *Bothriurus*: a serrilha dos últimos segmentos é o caráter
-///   clássico de identificação do gênero.
+///   maior poder de separação entre as espécies do catálogo publicado, em
+///   que três de cinco são *Tityus*: a serrilha dos últimos segmentos é o
+///   caráter clássico de identificação do gênero.
 ///
 /// - Primeira foto **no limite da nitidez** → pede **o perfil**, não um close.
 ///   Um aparelho que não conseguiu focar o animal inteiro vai falhar pior

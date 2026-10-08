@@ -105,7 +105,7 @@ class DemoMultiViewService {
   /// a primeira hipótese pela segunda.
   ///
   /// Derivada, e não sorteada do zero, porque duas opiniões sorteadas de forma
-  /// independente sobre oito espécies discordariam quase sempre — e uma
+  /// independente sobre várias espécies discordariam quase sempre — e uma
   /// demonstração em que as fotos nunca concordam ensinaria o contrário do que
   /// a fusão faz.
   DemoFusionOutcome combine({

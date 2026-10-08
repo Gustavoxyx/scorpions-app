@@ -52,11 +52,4 @@ abstract final class AppConfig {
 
   /// Duração simulada da análise. Some quando o modelo real assumir.
   static const Duration mockAnalysisDuration = Duration(milliseconds: 4200);
-
-  /// Limiares de confiança do produto. A IA da Fase 5 deve respeitá-los.
-  static const double highConfidenceThreshold = 0.85;
-  static const double mediumConfidenceThreshold = 0.65;
-
-  /// Abaixo deste valor o sistema deve responder "não sei" em vez de arriscar.
-  static const double rejectionThreshold = 0.45;
 }

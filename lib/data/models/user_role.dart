@@ -2,7 +2,7 @@
 ///
 /// # Por que é um enum fechado, e pequeno
 /// Começa com dois valores porque só dois são necessários hoje. Os papéis
-/// previstos para o futuro (`researcher`, `reviewer`) estão declarados mas
+/// previstos para o futuro (`specialist`, `reviewer`) estão declarados mas
 /// desabilitados: assim o vocabulário já existe e as regras de segurança podem
 /// ser escritas contra ele, sem que a aplicação finja ter permissões que ainda
 /// não sabe conceder.
@@ -21,7 +21,7 @@ enum UserRole {
   admin('admin', enabled: true),
 
   /// Previsto: contribui com identificações revisadas. Ainda sem permissões.
-  researcher('researcher', enabled: false),
+  specialist('specialist', enabled: false),
 
   /// Previsto: valida identificações de terceiros (human-in-the-loop, Fase 8).
   reviewer('reviewer', enabled: false);
@@ -40,7 +40,7 @@ enum UserRole {
   String get label => switch (this) {
         UserRole.user => 'Usuário',
         UserRole.admin => 'Administrador',
-        UserRole.researcher => 'Pesquisador',
+        UserRole.specialist => 'Especialista',
         UserRole.reviewer => 'Revisor',
       };
 

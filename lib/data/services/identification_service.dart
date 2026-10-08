@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../../core/constants/app_config.dart';
+import '../../core/constants/decision_thresholds.dart';
 import '../models/captured_image.dart';
 import '../models/identification.dart';
 import '../models/species.dart';
@@ -38,6 +39,13 @@ class MockIdentificationService implements IdentificationService {
 
   final Random _random;
 
+  /// Um valor dentro da faixa, afastado das bordas para que o arredondamento
+  /// na tela não o faça parecer da faixa vizinha.
+  double _between(double floor, double ceiling) {
+    final double margin = (ceiling - floor) * 0.1;
+    return floor + margin + _random.nextDouble() * (ceiling - floor - 2 * margin);
+  }
+
   /// Sobrescreve a duração simulada (usado por testes).
   final Duration? delay;
 
@@ -70,13 +78,24 @@ class MockIdentificationService implements IdentificationService {
       );
     }
 
+    // As faixas saem dos limiares de decisão, e não de números próprios: um
+    // sorteio "de confiança média" precisa cair onde o produto chama de média.
     final double topScore = switch (roll) {
-      < 0.62 => 0.86 + _random.nextDouble() * 0.12, // alta
-      < 0.85 => 0.66 + _random.nextDouble() * 0.18, // média
-      _ => 0.47 + _random.nextDouble() * 0.17, // baixa
+      < 0.62 => _between(DecisionThresholds.highScore, 0.98),
+      < 0.85 => _between(
+          DecisionThresholds.mediumScore,
+          DecisionThresholds.highScore,
+        ),
+      _ => _between(
+          DecisionThresholds.rejectBelow,
+          DecisionThresholds.mediumScore,
+        ),
     };
 
-    final List<Species> pool = List<Species>.of(MockSpecies.all)
+    // Só espécies que existem no catálogo publicado. O modo de demonstração
+    // mostra algumas a mais para navegação, mas "identificar" uma delas seria
+    // devolver uma resposta que a produção não tem como dar.
+    final List<Species> pool = List<Species>.of(MockSpecies.identifiable)
       ..shuffle(_random);
     final double secondScore = (1 - topScore) * (0.4 + _random.nextDouble() * 0.4);
 
